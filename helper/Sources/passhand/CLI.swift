@@ -2,19 +2,20 @@ import Foundation
 
 enum CLI {
     static func help() {
+        let mode = Auth.name.lowercased().padding(toLength: 13, withPad: " ", startingAt: 0)
         print("""
         passhand — lets AI agents sign in to websites without ever seeing your passwords
 
         Usage:
           passhand add <site> <username> [--auto]   Save a login (asks for the password, nothing is echoed)
-          passhand auto <site> <username> on|off    Fill this login without Touch ID (on) or with it (off)
+          passhand auto <site> <username> on|off    Fill this login without \(Auth.name) (on) or with it (off)
           passhand list                             Show saved sites, usernames and fill mode
           passhand remove <site> <username>         Delete a saved login
           passhand doctor                           Check that Chrome, the extension and the MCP client are connected
 
         Fill modes:
-          touch id  (default)  every password fill asks for Touch ID
-          auto                 fills unattended; use it for test and QA accounts. Turning it on asks for Touch ID once.
+          \(mode) (default)  every password fill asks for \(Auth.name)
+          auto                     fills unattended; use it for test and QA accounts. Turning it on asks for \(Auth.name) once.
 
         Examples:
           passhand add github.com you@example.com
@@ -34,8 +35,8 @@ enum CLI {
         do {
             if on { try Auth.confirm("let AI agents fill \(user) on \(origin) without asking") }
             try Vault.setAuto(origin: origin, username: user, auto: on)
-            print(on ? "\(user) on \(origin) now fills automatically (no Touch ID)."
-                     : "\(user) on \(origin) asks for Touch ID again.")
+            print(on ? "\(user) on \(origin) now fills automatically (no \(Auth.name))."
+                     : "\(user) on \(origin) asks for \(Auth.name) again.")
         } catch {
             fail("\(error)")
         }
@@ -58,7 +59,7 @@ enum CLI {
         do {
             if auto { try Auth.confirm("let AI agents fill \(user) on \(origin) without asking") }
             try Vault.save(origin: origin, username: user, password: first, auto: auto)
-            print("Saved \(user) for \(origin)" + (auto ? " — fills automatically (no Touch ID)." : " — asks for Touch ID on each fill."))
+            print("Saved \(user) for \(origin)" + (auto ? " — fills automatically (no \(Auth.name))." : " — asks for \(Auth.name) on each fill."))
         } catch {
             fail("\(error)")
         }
@@ -70,7 +71,7 @@ enum CLI {
             print("No logins saved yet. Add one with: passhand add <site> <username>")
             return
         }
-        for e in entries { print("\(e.origin)\t\(e.username)\t\(e.auto ? "auto" : "touch id")") }
+        for e in entries { print("\(e.origin)\t\(e.username)\t\(e.auto ? "auto" : Auth.name.lowercased())") }
     }
 
     static func remove(_ args: [String]) {
@@ -87,7 +88,7 @@ enum CLI {
     static func purge() {
         let entries = Vault.list()
         for e in entries { Vault.remove(origin: e.origin, username: e.username) }
-        print("Removed \(entries.count) saved login(s) from the Keychain.")
+        print("Removed \(entries.count) saved login(s) from the \(Vault.storeName).")
     }
 
     static func doctor() {
@@ -102,7 +103,7 @@ enum CLI {
                 print("Chrome helper:   running, but the extension did not answer ✗")
             }
         } catch {
-            print("Chrome helper:   not reachable ✗ — open Chrome and check the Passhand extension is enabled (after ./install.sh, reload it on chrome://extensions)")
+            print("Chrome helper:   not reachable ✗ — open Chrome and check the Passhand extension is enabled (after installing, reload it on chrome://extensions)")
         }
 
         let claudeOK: Bool = {
@@ -111,7 +112,14 @@ enum CLI {
                   let servers = o["mcpServers"] as? [String: Any] else { return false }
             return servers["passhand"] != nil
         }()
-        print("Claude desktop:  \(claudeOK ? "tool registered ✓ (restart Claude after installing)" : "not registered ✗ — run install.sh again")")
+        print("Claude desktop:  \(claudeOK ? "tool registered ✓ (restart Claude after installing)" : "not registered ✗ — run the installer again")")
+
+        let label = "\(Auth.name):".padding(toLength: 17, withPad: " ", startingAt: 0)
+        if let problem = Auth.availability() {
+            print("\(label)unavailable ✗ — \(problem)")
+        } else {
+            print("\(label)available ✓")
+        }
 
         let config = Config.load()
         if config.modelFallback {

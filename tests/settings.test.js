@@ -107,11 +107,12 @@ test("a helper that goes away fails the waiting request instead of hanging", asy
 
 // ---------- options.html / options.js ----------
 
-async function loadPage(handler) {
+async function loadPage(handler, { platform = "MacIntel" } = {}) {
   const dom = new JSDOM(read("options.html").replace(/<script[^>]*><\/script>/, ""), {
     url: SETTINGS_URL, runScripts: "outside-only",
   });
   const w = dom.window;
+  Object.defineProperty(w.navigator, "platform", { value: platform });
   const sent = [];
   w.chrome = {
     runtime: {
@@ -181,6 +182,24 @@ test("a refused save shows the reason and keeps what was typed", async () => {
   assert.equal(doc.getElementById("status").className, "error");
   assert.match(doc.getElementById("status").textContent, /Touch ID was not confirmed/);
   assert.equal(f.password.value, "typed");
+});
+
+test("the page names Touch ID on a Mac and Windows Hello on Windows", async () => {
+  const mac = await loadPage(() => ({ ok: true, logins: [] }));
+  assert.match(mac.doc.querySelector(".lead").textContent, /Touch ID on your Mac/);
+
+  const { doc } = await loadPage((m) => m.cmd === "logins.save"
+    ? new Promise(() => {}) // still waiting for the prompt
+    : { ok: true, logins: [] }, { platform: "Win32" });
+  assert.match(doc.querySelector(".lead").textContent, /Windows Hello on this PC/);
+  assert.match(doc.querySelector("label.check").textContent, /Fill without Windows Hello/);
+  const f = doc.getElementById("add").elements;
+  f.site.value = "example.com";
+  f.username.value = "qa";
+  f.password.value = "typed";
+  doc.getElementById("add").dispatchEvent(new doc.defaultView.Event("submit", { cancelable: true }));
+  await settle();
+  assert.equal(doc.getElementById("status").textContent, "Confirm with Windows Hello on this PC…");
 });
 
 test("the page never receives or shows a password from the list", async () => {

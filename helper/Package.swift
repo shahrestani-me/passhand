@@ -9,8 +9,11 @@ let package = Package(
             name: "passhand",
             path: "Sources/passhand",
             linkerSettings: [
-                .linkedFramework("Security"),
-                .linkedFramework("LocalAuthentication"),
+                .linkedFramework("Security", .when(platforms: [.macOS])),
+                .linkedFramework("LocalAuthentication", .when(platforms: [.macOS])),
+                .linkedLibrary("Advapi32", .when(platforms: [.windows])),
+                .linkedLibrary("User32", .when(platforms: [.windows])),
+                .linkedLibrary("Kernel32", .when(platforms: [.windows])),
             ]
         )
     ]

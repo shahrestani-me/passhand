@@ -1,11 +1,18 @@
 // Passhand settings page: the logins AI agents may use, grouped by site.
 // It only talks to Passhand's background worker, which forwards to the helper. The helper asks for
-// Touch ID before every change. Saved passwords never come back to this page.
+// Touch ID (Windows Hello on Windows) before every change. Saved passwords never come back to this page.
 
 const form = document.getElementById("add");
 const list = document.getElementById("logins");
 const statusLine = document.getElementById("status");
 const sitePreview = document.getElementById("site-preview");
+
+// The helper confirms changes with Touch ID on a Mac and with Windows Hello on Windows.
+const onWindows = /^Win/.test(navigator.platform);
+const AUTH = onWindows ? "Windows Hello" : "Touch ID";
+const DEVICE = onWindows ? "this PC" : "your Mac";
+document.querySelectorAll(".auth-name").forEach((n) => { n.textContent = AUTH; });
+document.querySelectorAll(".device").forEach((n) => { n.textContent = DEVICE; });
 
 // The origin a typed site will be saved under, or null if it isn't a usable site. Mirrors the helper's
 // Origin.forSaving, which has the final say: https only (http for local development hosts), a real
@@ -60,7 +67,7 @@ function setStatus(text, kind = "") {
   statusLine.className = kind;
 }
 
-// One request at a time: a Touch ID prompt may be waiting on the Mac.
+// One request at a time: a Touch ID or Windows Hello prompt may be waiting.
 function setBusy(busy) {
   document.querySelectorAll("button, input").forEach((el) => { el.disabled = busy; });
 }
@@ -130,8 +137,8 @@ function account(login) {
     auto.checked = !wanted; // show the real state until the helper confirms
     const done = await run(
       { cmd: "logins.auto", origin: login.origin, username: login.username, auto: wanted },
-      wanted ? "Confirm with Touch ID on your Mac…" : "Saving…",
-      () => `${login.username} on ${login.origin} ${wanted ? "now fills without Touch ID" : "asks for Touch ID again"}.`);
+      wanted ? `Confirm with ${AUTH} on ${DEVICE}…` : "Saving…",
+      () => `${login.username} on ${login.origin} ${wanted ? `now fills without ${AUTH}` : `asks for ${AUTH} again`}.`);
     if (done) await refresh();
   });
 
@@ -139,7 +146,7 @@ function account(login) {
   remove.addEventListener("click", async () => {
     const done = await run(
       { cmd: "logins.remove", origin: login.origin, username: login.username },
-      "Confirm with Touch ID on your Mac…",
+      `Confirm with ${AUTH} on ${DEVICE}…`,
       () => `Removed ${login.username} from ${login.origin}.`);
     if (done) await refresh();
   });
@@ -161,9 +168,9 @@ form.addEventListener("submit", async (event) => {
   const reply = await run(
     { cmd: "logins.save", site: f.site.value.trim(), username: f.username.value.trim(),
       password: f.password.value, auto: f.auto.checked },
-    "Confirm with Touch ID on your Mac…",
+    `Confirm with ${AUTH} on ${DEVICE}…`,
     (r) => `${r.replaced ? "Replaced the password for" : "Saved"} ${r.username} on ${r.origin}` +
-      (r.auto ? ", fills without Touch ID." : ", asks for Touch ID on each fill."));
+      (r.auto ? `, fills without ${AUTH}.` : `, asks for ${AUTH} on each fill.`));
   if (reply) {
     // Keep the site, so adding a second account for it is quick.
     f.username.value = "";

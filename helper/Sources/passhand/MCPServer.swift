@@ -1,4 +1,7 @@
 import Foundation
+#if os(Windows)
+import WinSDK
+#endif
 
 /// Minimal MCP server over stdio (newline-delimited JSON-RPC). Any MCP client can start it (Claude desktop, Claude Code, Cursor, ...).
 /// It never touches a password: it forwards "fill this tab" to the native host and relays the outcome.
@@ -8,8 +11,8 @@ enum MCPServer {
     /// Keep in step with "Using Passhand as an agent" in AGENTS.md: agents outside this repository only see this text.
     static let instructions = """
     Use fill_login whenever a page asks for a username and password. It fills credentials from the \
-    user's local Keychain (with Touch ID, or automatically for logins the user marked as auto); you \
-    never see the password.
+    user's \(Vault.storeName) (with \(Auth.name), or automatically for logins the user marked as auto); \
+    you never see the password.
 
     1. Call fill_login with the tab's current page_url and, whenever your browser tools give you one, its \
     tab_id. Without tab_id, Passhand refuses if several tabs show the same URL.
@@ -29,7 +32,7 @@ enum MCPServer {
             "name": "fill_login",
             "description": """
             Fill the saved username and password into the login form of an open Chrome tab. A local helper \
-            looks the login up in the macOS Keychain by the tab's real origin (asking the user for Touch ID \
+            looks the login up in the \(Vault.storeName) by the tab's real origin (asking the user for \(Auth.name) \
             unless that login is marked for automatic filling) and types it into the page directly — the \
             password is never returned to you. Call this on a \
             sign-in page instead of typing credentials. Afterwards click the sign-in/continue button yourself. \
@@ -66,7 +69,9 @@ enum MCPServer {
     ]
 
     static func run() -> Never {
+        #if !os(Windows)
         signal(SIGPIPE, SIG_IGN)
+        #endif
         while let line = readLine(strippingNewline: true) {
             guard !line.isEmpty,
                   let data = line.data(using: .utf8),
@@ -116,7 +121,7 @@ enum MCPServer {
         case "tools/call":
             let name = params["name"] as? String ?? ""
             let args = params["arguments"] as? [String: Any] ?? [:]
-            // Off the main loop: a fill can wait on Touch ID for a while.
+            // Off the main loop: a fill can wait on Touch ID / Windows Hello for a while.
             DispatchQueue.global().async {
                 let (text, isError) = MCPServer.runTool(name, args)
                 MCPServer.reply(id, ["content": [["type": "text", "text": text]], "isError": isError])
@@ -133,7 +138,7 @@ enum MCPServer {
         case "list_saved_logins":
             let entries = Vault.list()
             if entries.isEmpty {
-                return ("No logins are saved yet. The user can add one on Passhand's settings page (click the Passhand icon in Chrome) or in Terminal with: passhand add <site> <username>", false)
+                return ("No logins are saved yet. The user can add one on Passhand's settings page (click the Passhand icon in Chrome) or in a terminal with: passhand add <site> <username>", false)
             }
             return (entries.map { "\($0.origin)  —  \($0.username)" }.joined(separator: "\n"), false)
 

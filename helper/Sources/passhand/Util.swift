@@ -1,30 +1,72 @@
 import Foundation
+#if os(Windows)
+import WinSDK
+#else
 import Security
+#endif
 
 enum VaultError: Error, CustomStringConvertible {
+    #if os(Windows)
+    case windows(String, DWORD)
+    #else
     case keychain(OSStatus)
+    #endif
     case message(String)
     case authFailed
 
     var description: String {
         switch self {
+        #if os(Windows)
+        case .windows(let what, let code):
+            return "\(what) failed (Windows error \(code)): \(windowsErrorText(code))"
+        #else
         case .keychain(let status):
             let text = (SecCopyErrorMessageString(status, nil) as String?) ?? "unknown"
             return "Keychain error \(status): \(text)"
+        #endif
         case .message(let m):
             return m
         case .authFailed:
-            return "Touch ID was not confirmed, so nothing was filled."
+            return "\(Auth.name) was not confirmed, so nothing was filled."
         }
     }
 }
 
 enum Paths {
     static let home = FileManager.default.homeDirectoryForCurrentUser
+    #if os(Windows)
+    // %LOCALAPPDATA%\passhand: per user, never roamed to other machines.
+    static let support = known("LOCALAPPDATA", "AppData/Local").appendingPathComponent("passhand", isDirectory: true)
+    #else
     static let support = home.appendingPathComponent("Library/Application Support/passhand", isDirectory: true)
-    static var socket: String { support.appendingPathComponent("vault.sock").path }
+    #endif
     static var config: URL { support.appendingPathComponent("config.json") }
     static var log: URL { support.appendingPathComponent("host.log") }
+
+    #if os(Windows)
+    /// Claude desktop's config in %APPDATA%\Claude, or in its package folder when it was installed as an
+    /// MSIX package and already keeps its config there.
+    static let claudeConfig: URL = {
+        let packages = known("LOCALAPPDATA", "AppData/Local").appendingPathComponent("Packages", isDirectory: true)
+        let packaged = ((try? FileManager.default.contentsOfDirectory(atPath: packages.path)) ?? [])
+            .filter { $0.hasPrefix("Claude_") }
+            .map { packages.appendingPathComponent("\($0)/LocalCache/Roaming/Claude/claude_desktop_config.json") }
+            .first { FileManager.default.fileExists(atPath: $0.path) }
+        return packaged ?? known("APPDATA", "AppData/Roaming").appendingPathComponent("Claude/claude_desktop_config.json")
+    }()
+
+    private static func known(_ variable: String, _ fallback: String) -> URL {
+        if let value = ProcessInfo.processInfo.environment[variable], !value.isEmpty {
+            return URL(fileURLWithPath: value, isDirectory: true)
+        }
+        return home.appendingPathComponent(fallback, isDirectory: true)
+    }
+
+    static func ensure() {
+        // %LOCALAPPDATA% is already private to this user.
+        try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+    }
+    #else
     static let claudeConfig = home.appendingPathComponent("Library/Application Support/Claude/claude_desktop_config.json")
 
     static func ensure() {
@@ -32,6 +74,7 @@ enum Paths {
             at: support, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700])
     }
+    #endif
 }
 
 struct Config {
@@ -109,6 +152,59 @@ func fail(_ message: String) -> Never {
     exit(1)
 }
 
+#if os(Windows)
+/// Reads a line from the console without echoing it. Piped input (no console) is read as is.
+func readSecret(_ prompt: String) -> String? {
+    FileHandle.standardError.write(prompt.data(using: .utf8)!)
+    let input = GetStdHandle(STD_INPUT_HANDLE)
+    var original: DWORD = 0
+    guard GetConsoleMode(input, &original) else { return readLine(strippingNewline: true) }
+    SetConsoleMode(input, original & ~DWORD(ENABLE_ECHO_INPUT))
+    defer {
+        SetConsoleMode(input, original)
+        FileHandle.standardError.write("\n".data(using: .utf8)!)
+    }
+    // ReadConsoleW, so characters outside the console's code page survive.
+    var units: [WCHAR] = []
+    var buffer = [WCHAR](repeating: 0, count: 256)
+    while units.last != 0x0A {
+        var got: DWORD = 0
+        guard ReadConsoleW(input, &buffer, DWORD(buffer.count), &got, nil), got > 0 else { break }
+        units.append(contentsOf: buffer[..<Int(got)])
+    }
+    while let last = units.last, last == 0x0A || last == 0x0D { units.removeLast() }
+    return String(decoding: units, as: UTF16.self)
+}
+
+func windowsErrorText(_ code: DWORD) -> String {
+    var buffer = [WCHAR](repeating: 0, count: 512)
+    let flags = DWORD(FORMAT_MESSAGE_FROM_SYSTEM) | DWORD(FORMAT_MESSAGE_IGNORE_INSERTS)
+    let length = FormatMessageW(flags, nil, code, 0, &buffer, DWORD(buffer.count), nil)
+    guard length > 0 else { return "unknown" }
+    return String(decoding: buffer[..<Int(length)], as: UTF16.self).trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+/// Chrome's native messaging pipes, through the raw handles: the C runtime's text mode would turn every
+/// 0x0A byte in a frame into 0x0D 0x0A.
+enum StdStream {
+    static func read(_ buffer: UnsafeMutableRawPointer, _ count: Int) -> Int {
+        var got: DWORD = 0
+        guard ReadFile(GetStdHandle(STD_INPUT_HANDLE), buffer, DWORD(count), &got, nil) else { return -1 }
+        return Int(got)
+    }
+
+    static func write(_ buffer: UnsafeRawBufferPointer) {
+        guard let base = buffer.baseAddress else { return }
+        let output = GetStdHandle(STD_OUTPUT_HANDLE)
+        var offset = 0
+        while offset < buffer.count {
+            var wrote: DWORD = 0
+            guard WriteFile(output, base + offset, DWORD(buffer.count - offset), &wrote, nil), wrote > 0 else { return }
+            offset += Int(wrote)
+        }
+    }
+}
+#else
 /// Reads a line from the terminal without echoing it.
 func readSecret(_ prompt: String) -> String? {
     FileHandle.standardError.write(prompt.data(using: .utf8)!)
@@ -134,56 +230,14 @@ func writeAll(_ fd: Int32, _ buffer: UnsafeRawBufferPointer) {
     }
 }
 
-func readLineFD(_ fd: Int32, limit: Int = 1 << 20) -> Data? {
-    var data = Data()
-    var byte: UInt8 = 0
-    while data.count < limit {
-        let n = read(fd, &byte, 1)
-        if n <= 0 { break }
-        if byte == 0x0A { return data }
-        data.append(byte)
+/// Chrome's native messaging pipes.
+enum StdStream {
+    static func read(_ buffer: UnsafeMutableRawPointer, _ count: Int) -> Int {
+        Darwin.read(STDIN_FILENO, buffer, count)
     }
-    return data.isEmpty ? nil : data
-}
 
-enum UnixAddress {
-    static func make(_ path: String) -> sockaddr_un? {
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let bytes = Array(path.utf8)
-        guard bytes.count < MemoryLayout.size(ofValue: addr.sun_path) else { return nil }
-        withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-            raw.copyBytes(from: bytes)
-            raw[bytes.count] = 0
-        }
-        addr.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
-        return addr
+    static func write(_ buffer: UnsafeRawBufferPointer) {
+        writeAll(STDOUT_FILENO, buffer)
     }
 }
-
-/// Used by the MCP side to talk to the native host that Chrome keeps running.
-enum SocketClient {
-    static let notRunning = "The Passhand Chrome extension isn't connected. Ask the user to open Chrome and check that the Passhand extension is enabled (passhand doctor shows the details)."
-
-    static func request(_ obj: [String: Any], timeout: Int = 120) throws -> [String: Any] {
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { throw VaultError.message("Could not open a local socket") }
-        defer { close(fd) }
-        guard var addr = UnixAddress.make(Paths.socket) else { throw VaultError.message("Socket path too long") }
-        let rc = withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-        guard rc == 0 else { throw VaultError.message(notRunning) }
-        var tv = timeval(tv_sec: timeout, tv_usec: 0)
-        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
-        var data = try JSONSerialization.data(withJSONObject: obj)
-        data.append(0x0A)
-        data.withUnsafeBytes { writeAll(fd, $0) }
-        guard let line = readLineFD(fd),
-              let resp = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any]
-        else { throw VaultError.message("No answer from the vault helper (timed out, or the Touch ID prompt was left open).") }
-        return resp
-    }
-}
+#endif

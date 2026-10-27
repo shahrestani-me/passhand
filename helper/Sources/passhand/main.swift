@@ -3,7 +3,7 @@ import Foundation
 // One binary, several roles:
 //   - Chrome starts it as a native messaging host (first argument is the extension origin)
 //   - An MCP client (e.g. Claude desktop) starts it as an MCP server ("mcp")
-//   - You run it in Terminal to manage saved logins ("add", "list", ...)
+//   - You run it in a terminal to manage saved logins ("add", "list", ...)
 
 let arguments = CommandLine.arguments
 let command = arguments.count > 1 ? arguments[1] : "help"

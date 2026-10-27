@@ -1,7 +1,7 @@
 import Foundation
 
 /// Requests from the extension's settings page (forwarded by its background worker, the only code that
-/// holds the Chrome connection). Every change asks for Touch ID on this Mac, except turning auto off,
+/// holds the Chrome connection). Every change asks for Touch ID / Windows Hello, except turning auto off,
 /// which only makes fills stricter. Nothing returned from here contains a password.
 enum Settings {
     private static let lock = NSLock()
@@ -14,7 +14,7 @@ enum Settings {
             reply["ok"] = true
             return reply
         } catch VaultError.authFailed {
-            return ["ok": false, "error": "Touch ID was not confirmed, so nothing was changed."]
+            return ["ok": false, "error": "\(Auth.name) was not confirmed, so nothing was changed."]
         } catch {
             Log.write("settings request failed: \(error)")
             return ["ok": false, "error": "\(error)"]
@@ -56,7 +56,7 @@ enum Settings {
             let on = r["auto"] as? Bool ?? false
             if on { try Auth.confirm("let AI agents fill \(user) on \(origin) without asking") }
             try Vault.setAuto(origin: origin, username: user, auto: on)
-            Log.write("settings page set \(user) on \(origin) to \(on ? "auto" : "touch id")")
+            Log.write("settings page set \(user) on \(origin) to \(on ? "auto" : Auth.name.lowercased())")
             return ["origin": origin, "username": user, "auto": on]
 
         default:

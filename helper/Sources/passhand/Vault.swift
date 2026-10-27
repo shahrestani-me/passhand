@@ -1,18 +1,29 @@
 import Foundation
+#if os(macOS)
 import Security
 import LocalAuthentication
+#endif
 
+// Shared by both vaults: the macOS Keychain below and Windows Credential Manager (VaultWindows.swift).
+extension Vault {
+    struct Entry { let origin: String; let username: String; let auto: Bool }
+
+    static func entries(origin: String) -> [Entry] {
+        list().filter { $0.origin == origin }
+    }
+}
+
+#if os(macOS)
 /// The "box": generic-password items in your login Keychain.
 /// service = "passhand:<origin>", account = username.
 /// Items are created by this binary, so macOS only lets this binary read them without asking you.
 enum Vault {
+    static let storeName = "macOS Keychain"
     static let prefix = "passhand:"
     static let marker = "passhand login"
     // Per-login fill policy, stored on the Keychain item itself (kSecAttrComment).
     static let autoMark = "fill:auto"
     static let promptMark = "fill:touchid"
-
-    struct Entry { let origin: String; let username: String; let auto: Bool }
 
     static func service(_ origin: String) -> String { prefix + origin }
 
@@ -62,10 +73,6 @@ enum Vault {
         .sorted { ($0.origin, $0.username) < ($1.origin, $1.username) }
     }
 
-    static func entries(origin: String) -> [Entry] {
-        list().filter { $0.origin == origin }
-    }
-
     static func password(origin: String, username: String) throws -> String {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -94,6 +101,17 @@ enum Vault {
 
 /// Touch ID (or your Mac password) before every password fill.
 enum Auth {
+    static let name = "Touch ID"
+
+    /// nil when Touch ID (or the Mac password) can be asked for, otherwise why not.
+    static func availability() -> String? {
+        var error: NSError?
+        guard LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            return error?.localizedDescription ?? "unknown reason"
+        }
+        return nil
+    }
+
     static func confirm(_ reason: String, timeout: TimeInterval = 90) throws {
         let context = LAContext()
         var error: NSError?
@@ -112,3 +130,4 @@ enum Auth {
         if !ok { throw VaultError.authFailed }
     }
 }
+#endif

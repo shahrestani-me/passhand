@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Fallback for unusual login forms: a small local model (via Ollama) picks which inputs are the
 /// username and password. It only sees field descriptions — never a password or a field value.

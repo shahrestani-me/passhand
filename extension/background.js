@@ -1,10 +1,10 @@
 // Passhand — Chrome side.
-// Keeps a connection to the local helper (which owns the Keychain) and does two things on its behalf:
+// Keeps a connection to the local helper (which owns the saved logins) and does two things on its behalf:
 //   inspect: find the tab the agent is on, report its real origin and the visible input fields (no values)
 //   fill:    write the values the helper sends into those fields, after re-checking the origin
 // It never decides which password to use and never sends a password anywhere but the page.
 // It also forwards requests from its own settings page (options.html) to the helper, which owns the
-// Keychain and asks for Touch ID before any change. Saved passwords never come back this way.
+// saved logins and asks for Touch ID (Windows Hello on Windows) before any change. Saved passwords never come back this way.
 
 const HOST = "me.shahrestani.passhand";
 let port = null;
@@ -59,7 +59,7 @@ const SETTINGS_FIELDS = {
   "logins.remove": ["origin", "username"],
   "logins.auto": ["origin", "username", "auto"],
 };
-const SETTINGS_TIMEOUT_MS = 120 * 1000; // longer than the helper's 90 s Touch ID timeout
+const SETTINGS_TIMEOUT_MS = 120 * 1000; // longer than the helper's 90 s Touch ID / Windows Hello timeout
 const settingsWaiting = new Map();
 
 chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
@@ -90,12 +90,12 @@ function isSettingsPage(sender) {
 function askHelper(request) {
   connect();
   if (!port) {
-    return Promise.resolve({ ok: false, error: "Passhand's helper isn't installed or couldn't start. Run ./install.sh, then reload the extension." });
+    return Promise.resolve({ ok: false, error: "Passhand's helper isn't installed or couldn't start. Run the installer (install.sh on macOS, install.ps1 on Windows), then reload the extension." });
   }
   const req = crypto.randomUUID();
   return new Promise((resolve) => {
     const timer = setTimeout(
-      () => settingsReply({ req, ok: false, error: "The helper didn't answer in time. Was the Touch ID prompt left open?" }),
+      () => settingsReply({ req, ok: false, error: "The helper didn't answer in time. Was the Touch ID or Windows Hello prompt left open?" }),
       SETTINGS_TIMEOUT_MS);
     settingsWaiting.set(req, { resolve, timer });
     send({ ...request, req });

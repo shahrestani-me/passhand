@@ -1,19 +1,30 @@
 import Foundation
+#if os(Windows)
+import WinSDK
+#endif
 
 // Native messaging host: Chrome starts this process when the extension connects and keeps it
 // alive while the connection is open. It is the only process that ever reads a password.
 //
-//   MCP process ──(unix socket, no secrets)──► this host ──(stdio, Chrome)──► extension ──► page
+//   MCP process ──(local socket, no secrets)──► this host ──(stdio, Chrome)──► extension ──► page
 
 enum NativeHost {
     static func run() -> Never {
+        #if os(Windows)
+        // Chrome on Windows also passes the window that started us, for the Windows Hello prompt.
+        if let arg = CommandLine.arguments.first(where: { $0.hasPrefix("--parent-window=") }),
+           let handle = Int(arg.dropFirst("--parent-window=".count)), handle != 0 {
+            Auth.parentWindow = HWND(bitPattern: handle)
+        }
+        #else
         signal(SIGPIPE, SIG_IGN)
+        #endif
         Paths.ensure()
         Log.write("host started")
         SocketServer.start()
         while let message = Framing.read() {
             // "req" marks a request the extension starts (its settings page); everything else answers ours.
-            // Settings requests can wait on Touch ID, so they run off the read loop.
+            // Settings requests can wait on Touch ID / Windows Hello, so they run off the read loop.
             if let req = message["req"] as? String {
                 Thread.detachNewThread {
                     var reply = Settings.handle(message)
@@ -25,7 +36,7 @@ enum NativeHost {
             }
         }
         Log.write("Chrome closed the connection; host exiting")
-        unlink(Paths.socket)
+        LocalSocket.cleanUp()
         exit(0)
     }
 }
@@ -38,7 +49,7 @@ enum Framing {
         var buffer = [UInt8](repeating: 0, count: count)
         var got = 0
         while got < count {
-            let n = buffer.withUnsafeMutableBytes { Darwin.read(STDIN_FILENO, $0.baseAddress! + got, count - got) }
+            let n = buffer.withUnsafeMutableBytes { StdStream.read($0.baseAddress! + got, count - got) }
             if n <= 0 { return nil }
             got += n
         }
@@ -59,7 +70,7 @@ enum Framing {
         frame.append(body)
         writeLock.lock()
         defer { writeLock.unlock() }
-        frame.withUnsafeBytes { writeAll(STDOUT_FILENO, $0) }
+        frame.withUnsafeBytes { StdStream.write($0) }
     }
 }
 
@@ -101,44 +112,16 @@ final class ExtensionLink {
     }
 }
 
-/// Local socket the MCP process connects to. Only this user can reach it (0600 file in a 0700 folder,
-/// plus a peer uid check).
+/// The local socket the MCP process connects to (see LocalSocket.swift for who may connect).
 enum SocketServer {
     private static let fillLock = NSLock()
 
     static func start() {
-        let path = Paths.socket
-        unlink(path)
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0, var addr = UnixAddress.make(path) else { Log.write("could not create socket"); return }
-        let oldMask = umask(0o077)
-        let bound = withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-        umask(oldMask)
-        guard bound == 0, listen(fd, 8) == 0 else { Log.write("could not listen on socket (errno \(errno))"); return }
-        chmod(path, 0o600)
-
-        Thread.detachNewThread {
-            while true {
-                let client = accept(fd, nil, nil)
-                if client < 0 { continue }
-                var uid: uid_t = 0
-                var gid: gid_t = 0
-                if getpeereid(client, &uid, &gid) != 0 || uid != getuid() {
-                    close(client)
-                    continue
-                }
-                Thread.detachNewThread { SocketServer.handle(client) }
-            }
-        }
+        LocalSocket.listen(handle)
     }
 
-    private static func handle(_ fd: Int32) {
-        defer { close(fd) }
-        guard let line = readLineFD(fd),
+    private static func handle(_ connection: LocalConnection) {
+        guard let line = connection.readLine(),
               let request = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any]
         else { return }
 
@@ -167,7 +150,7 @@ enum SocketServer {
 
         if var data = try? JSONSerialization.data(withJSONObject: response) {
             data.append(0x0A)
-            data.withUnsafeBytes { writeAll(fd, $0) }
+            connection.write(data)
         }
     }
 }
@@ -193,7 +176,7 @@ enum Filler {
         let saved = Vault.entries(origin: origin)
         let accounts = saved.map(\.username)
         guard !accounts.isEmpty else {
-            throw VaultError.message("No saved login for \(origin). The user can add one on Passhand's settings page (click the Passhand icon in Chrome) or in Terminal with: passhand add \(origin) <username>")
+            throw VaultError.message("No saved login for \(origin). The user can add one on Passhand's settings page (click the Passhand icon in Chrome) or in a terminal with: passhand add \(origin) <username>")
         }
         let user: String
         if let requested = username, !requested.isEmpty {
@@ -232,7 +215,7 @@ enum Filler {
             throw VaultError.message("Couldn't find a login form on this page. Make sure the sign-in form is visible, then try again.")
         }
 
-        // 4. Build the fill. Touch ID when a password is involved, unless this login is marked auto.
+        // 4. Build the fill. Touch ID / Windows Hello when a password is involved, unless this login is marked auto.
         let autoFill = saved.first(where: { $0.username == user })?.auto ?? false
         var items: [[String: Any]] = []
         if let ref = usernameRef {
@@ -241,7 +224,7 @@ enum Filler {
         if let ref = passwordRef {
             let host = URLComponents(string: origin)?.host ?? origin
             if autoFill {
-                Log.write("auto login (no Touch ID) for \(user) on \(origin)")
+                Log.write("auto login (no \(Auth.name)) for \(user) on \(origin)")
             } else {
                 try Auth.confirm("fill the password for \(user) on \(host)")
             }

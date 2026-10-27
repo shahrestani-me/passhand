@@ -17,6 +17,77 @@ jobs:
       - run: swift build -c release --package-path helper
       - run: ./helper/.build/release/passhand help
 
+  helper-windows:
+    name: Build and install helper (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: compnerd/gha-setup-swift@9ff1ee4c44888c5817fc14d1b257ac8cabb4935f # v0.5.1
+        with:
+          swift-version: swift-6.1.2-release
+          swift-build: 6.1.2-RELEASE
+      - name: Install
+        shell: powershell
+        run: .\install.ps1
+      - name: Installed helper runs without the Swift toolchain on PATH
+        shell: pwsh
+        run: |
+          $bin = "$env:LOCALAPPDATA\passhand\bin\passhand.exe"
+          $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"
+          & $bin help
+          if ($LASTEXITCODE -ne 0) { throw "passhand help exited with $LASTEXITCODE" }
+      - name: Credential Manager round trip
+        shell: pwsh
+        run: |
+          $bin = "$env:LOCALAPPDATA\passhand\bin\passhand.exe"
+          "ci-secret`nci-secret" | & $bin add ci.example.com ci@example.com
+          if ($LASTEXITCODE -ne 0) { throw "add failed" }
+          $list = & $bin list | Out-String
+          Write-Host $list
+          if ($list -notmatch 'https://ci\.example\.com\s+ci@example\.com\s+windows hello') { throw "unexpected list output" }
+          & $bin remove ci.example.com ci@example.com
+          if ($LASTEXITCODE -ne 0) { throw "remove failed" }
+      - name: Native host answers over Chrome's framing and the named pipe
+        shell: pwsh
+        run: |
+          $bin = "$env:LOCALAPPDATA\passhand\bin\passhand.exe"
+          $psi = [System.Diagnostics.ProcessStartInfo]::new($bin, "chrome-extension://$('a' * 32)/")
+          $psi.UseShellExecute = $false
+          $psi.RedirectStandardInput = $true
+          $psi.RedirectStandardOutput = $true
+          $native = [System.Diagnostics.Process]::Start($psi)
+          Start-Sleep -Seconds 2
+
+          # A settings request, framed like Chrome does: 4-byte length, then JSON.
+          $body = [Text.Encoding]::UTF8.GetBytes('{"req":"ci","cmd":"logins.list"}')
+          $in = $native.StandardInput.BaseStream
+          $in.Write([BitConverter]::GetBytes([int]$body.Length), 0, 4)
+          $in.Write($body, 0, $body.Length)
+          $in.Flush()
+          $out = $native.StandardOutput.BaseStream
+          $header = [byte[]]::new(4)
+          if ($out.Read($header, 0, 4) -ne 4) { throw "no reply header" }
+          $reply = [byte[]]::new([BitConverter]::ToInt32($header, 0))
+          $got = 0
+          while ($got -lt $reply.Length) { $got += $out.Read($reply, $got, $reply.Length - $got) }
+          $text = [Text.Encoding]::UTF8.GetString($reply)
+          Write-Host "reply: $text"
+          if ($text -notmatch '"ok":true' -or $text -notmatch '"req":"ci"') { throw "unexpected reply" }
+
+          # doctor reaches the host over the named pipe; nobody plays the extension, so it can't answer.
+          $doctor = & $bin doctor | Out-String
+          Write-Host $doctor
+          $in.Close()
+          $native.WaitForExit(10000) | Out-Null
+          if ($doctor -notmatch 'running, but the extension did not answer') { throw "doctor didn't reach the host" }
+          if ($doctor -match 'HRESULT|Windows Runtime') { throw "Windows Hello check failed" }
+      - name: Uninstall
+        shell: powershell
+        run: |
+          .\uninstall.ps1
+          if (Test-Path "$env:LOCALAPPDATA\passhand") { throw "install folder still there" }
+          if (Test-Path "HKCU:\Software\Google\Chrome\NativeMessagingHosts\me.shahrestani.passhand") { throw "registry key still there" }
+
   extension:
     name: Extension tests
     runs-on: ubuntu-latest
