@@ -156,7 +156,7 @@ enum MCPServer {
             if let user = args["username"] as? String, !user.isEmpty { request["username"] = user }
             if let tab = args["tab_id"] as? Int { request["tab_id"] = tab }
             do {
-                let response = try SocketClient.request(request, timeout: 120)
+                let response = try Browsers.fillLogin(request)
                 guard response["ok"] as? Bool == true else {
                     return (response["error"] as? String ?? "Unknown error from the vault helper.", true)
                 }

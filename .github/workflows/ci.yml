@@ -16,6 +16,9 @@ jobs:
       - uses: actions/checkout@v4
       - run: swift build -c release --package-path helper
       - run: ./helper/.build/release/passhand help
+      # Runs browsers.test.js against the helper just built (skipped on Linux, where there is none).
+      - run: npm install && npm test
+        working-directory: tests
 
   extension:
     name: Extension tests

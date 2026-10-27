@@ -25,7 +25,7 @@ enum NativeHost {
             }
         }
         Log.write("Chrome closed the connection; host exiting")
-        unlink(Paths.socket)
+        SocketServer.stop()
         exit(0)
     }
 }
@@ -102,24 +102,43 @@ final class ExtensionLink {
 }
 
 /// Local socket the MCP process connects to. Only this user can reach it (0600 file in a 0700 folder,
-/// plus a peer uid check).
+/// plus a peer uid check). Each host has its own, sockets/<pid>-<random>.sock, so several browsers can
+/// run Passhand at once and the MCP side picks the one that has the tab (see Browsers.swift).
 enum SocketServer {
     private static let fillLock = NSLock()
+    /// The random part keeps a later host that gets the same pid from ever using this name.
+    private static let path = Paths.sockets.appendingPathComponent(
+        "\(getpid())-\(String(UInt32.random(in: 0 ..< 1 << 24), radix: 16)).sock").path
+    /// What was bound, so stop() deletes only this socket and never one another host made.
+    private static var bound: (dev: dev_t, ino: ino_t)?
+
+    /// The browser that started this host, by its app ("Google Chrome", "Chromium"), for doctor and errors.
+    static let browser: String = {
+        var buffer = [CChar](repeating: 0, count: 4096)
+        guard proc_pidpath(getppid(), &buffer, UInt32(buffer.count)) > 0 else { return "a browser" }
+        let parts = String(cString: buffer).split(separator: "/")
+        if let app = parts.first(where: { $0.hasSuffix(".app") }) { return String(app.dropLast(4)) }
+        return parts.last.map(String.init) ?? "a browser"
+    }()
 
     static func start() {
-        let path = Paths.socket
-        unlink(path)
+        // Bound under another name first: the MCP side deletes a .sock nobody listens on, so this one
+        // only gets its name once it listens.
+        let staging = path + ".new"
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0, var addr = UnixAddress.make(path) else { Log.write("could not create socket"); return }
+        guard fd >= 0, var addr = UnixAddress.make(staging) else { Log.write("could not create socket"); return }
         let oldMask = umask(0o077)
-        let bound = withUnsafePointer(to: &addr) {
+        let rc = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
             }
         }
         umask(oldMask)
-        guard bound == 0, listen(fd, 8) == 0 else { Log.write("could not listen on socket (errno \(errno))"); return }
-        chmod(path, 0o600)
+        guard rc == 0, listen(fd, SOMAXCONN) == 0 else { Log.write("could not listen on socket (errno \(errno))"); return }
+        chmod(staging, 0o600)
+        guard rename(staging, path) == 0 else { Log.write("could not name the socket (errno \(errno))"); unlink(staging); return }
+        var st = stat()
+        if lstat(path, &st) == 0 { bound = (st.st_dev, st.st_ino) }
 
         Thread.detachNewThread {
             while true {
@@ -136,6 +155,12 @@ enum SocketServer {
         }
     }
 
+    static func stop() {
+        var st = stat()
+        guard let bound, lstat(path, &st) == 0, st.st_dev == bound.dev, st.st_ino == bound.ino else { return }
+        unlink(path)
+    }
+
     private static func handle(_ fd: Int32) {
         defer { close(fd) }
         guard let line = readLineFD(fd),
@@ -146,7 +171,17 @@ enum SocketServer {
         switch request["op"] as? String {
         case "ping":
             let extensionAlive = (try? ExtensionLink.shared.call(["cmd": "ping"], timeout: 5)) != nil
-            response = ["ok": true, "extension": extensionAlive]
+            response = ["ok": true, "extension": extensionAlive, "browser": browser]
+        case "locate":
+            var locate: [String: Any] = ["cmd": "locate", "page_url": request["page_url"] as? String ?? ""]
+            if let tab = request["tab_id"] as? Int { locate["tab_id"] = tab }
+            do {
+                let found = try ExtensionLink.shared.call(locate, timeout: 5)
+                // Only how many tabs match counts across browsers, not how (see Browsers.fillLogin).
+                response = ["ok": true, "count": found["count"] as? Int ?? 0, "browser": browser]
+            } catch {
+                response = ["ok": false, "error": "\(error)"]
+            }
         case "fill_login":
             fillLock.lock()
             do {

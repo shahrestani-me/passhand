@@ -29,7 +29,8 @@ Layout:
 - `extension/`: Manifest V3 extension. `snapshotPage` and `fillPage` run inside the page and must
   stay self-contained. `options.html`/`options.js` is the settings page for managing logins; it only
   talks to the background worker, which forwards its requests to the helper.
-- `tests/`: Node tests for the page-side field detection and filling (jsdom).
+- `tests/`: Node tests for the page-side field detection and filling (jsdom), and, with a built helper,
+  for several browsers running Passhand at once (`browsers.test.js`).
 
 The rules in "Using Passhand as an agent" are also the MCP server's `instructions`
 (`helper/Sources/passhand/MCPServer.swift`), which is all an agent outside this repository sees. Change
@@ -49,7 +50,9 @@ Invariants. Don't weaken these, and treat any change that touches them as securi
 - https only (http only for local development hosts).
 - A password is only written into `type=password` inputs, after validating every target first.
 - The origin is re-checked right before writing.
-- Duplicate tabs are refused, not guessed.
+- Duplicate tabs are refused, not guessed, including the same page open in two browsers, or in one
+  browser while another doesn't answer.
 - Touch ID before every password fill unless the login is `auto`; enabling `auto` needs Touch ID.
 - Only the extension's own settings page can manage logins, every change from it needs Touch ID
   (except turning `auto` off), and saved passwords are never sent back to it.
+- Only the current user can reach the local sockets (one per browser), and a helper only deletes its own.
