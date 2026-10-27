@@ -5,11 +5,23 @@ import Foundation
 enum MCPServer {
     private static let outputLock = NSLock()
 
+    /// Keep in step with "Using Passhand as an agent" in AGENTS.md: agents outside this repository only see this text.
     static let instructions = """
     Use fill_login whenever a page asks for a username and password. It fills credentials from the \
     user's local Keychain (with Touch ID, or automatically for logins the user marked as auto); you \
-    never see the password. Never ask \
-    the user to paste a password into the chat. After a successful fill, click the page's sign-in button yourself.
+    never see the password.
+
+    1. Call fill_login with the tab's current page_url and, whenever your browser tools give you one, its \
+    tab_id. Without tab_id, Passhand refuses if several tabs show the same URL.
+    2. If it reports several saved accounts, call it again with username.
+    3. After "Filled …", click the page's sign-in button yourself. Prefer that over submit: true.
+    4. Two-step logins (email page, then password page): call fill_login once on each page.
+    5. If it reports no saved login, tell the user to add one on Passhand's settings page (the Passhand \
+    icon in Chrome) or with `passhand add <site> <username>`. Never ask the user to paste a password into \
+    the chat, and never type one yourself. Don't open or use the settings page; managing logins is the user's job.
+    6. 2FA codes, passkeys, CAPTCHAs, sign-up and change-password forms are out of scope. Hand them back to the user.
+
+    list_saved_logins shows which sites and usernames exist, never passwords.
     """
 
     static let tools: [[String: Any]] = [
@@ -121,7 +133,7 @@ enum MCPServer {
         case "list_saved_logins":
             let entries = Vault.list()
             if entries.isEmpty {
-                return ("No logins are saved yet. The user can add one in Terminal with: passhand add <site> <username>", false)
+                return ("No logins are saved yet. The user can add one on Passhand's settings page (click the Passhand icon in Chrome) or in Terminal with: passhand add <site> <username>", false)
             }
             return (entries.map { "\($0.origin)  —  \($0.username)" }.joined(separator: "\n"), false)
 

@@ -110,6 +110,19 @@ Then:
 > The `key` in `extension/manifest.json` is a **public** key. It only pins the extension ID so the
 > native host can trust it. No private key is needed or included.
 
+## Updating
+
+```bash
+cd passhand
+git pull
+./install.sh
+```
+
+Then open `chrome://extensions` and click the reload arrow on the Passhand card. Chrome only picks up
+the new extension files and starts the new helper after a reload; until then `passhand doctor` reports
+the Chrome helper as not reachable. Restart Claude desktop too, so it loads the new MCP server. Saved
+logins stay in your Keychain.
+
 ## Use
 
 ### Settings page
@@ -159,13 +172,33 @@ one, which keeps that permission across rebuilds.
 | `fill_login` | `page_url` (required), `tab_id` (recommended), `username`, `submit` | "Filled the username and password for … on …" or an error |
 | `list_saved_logins` | — | Sites and usernames, never passwords |
 
-See [AGENTS.md](AGENTS.md) for how agents should use them.
+The MCP server gives connected agents its usage rules automatically. They are the same rules as in
+[AGENTS.md](AGENTS.md).
 
 ### Try it safely
 
 Use a public practice site such as `https://the-internet.herokuapp.com/login`, which shows its own
 demo credentials on the page. Save them with `passhand add the-internet.herokuapp.com <demo user>`
 and ask your agent to log in.
+
+## Troubleshooting
+
+Start with `passhand doctor`. It checks the helper, your saved logins, Chrome, Claude desktop and the
+optional local model.
+
+| What you see | What to do |
+|---|---|
+| `doctor`: Chrome helper not reachable | Open Chrome, check Passhand is enabled on `chrome://extensions`, and click its reload arrow. Always needed after `./install.sh`. |
+| `doctor`: running, but the extension did not answer | Reload the extension, and check its ID is `alpckagkehodlliniailejachglpeinb`. |
+| The agent has no `fill_login` tool | Restart Claude desktop after installing. For other MCP clients, add the stdio server (see [Install](#install)). The Claude side panel in Chrome can't use it (see [Where it works](#where-it-works)). |
+| "No saved login for https://…" | Add one on the settings page or with `passhand add`. Origins are exact: `www.` and other subdomains are separate entries. `passhand list` shows what's saved. |
+| "N tabs are open on …, so nothing was filled" | The agent should pass `tab_id`. Otherwise close the duplicate tabs. |
+| "No open tab matches …" | `page_url` must be the tab's URL as it is open now, after any redirects. |
+| "Couldn't find a login form on this page" | Make sure the form is visible (for example, open the sign-in dialog first), then try again. Logins inside cross-origin iframes aren't supported. For unusual forms, the optional local model can help (see [Configuration](#configuration-optional)). |
+| "Touch ID was not confirmed, so nothing was filled." | The prompt was declined, or left open for 90 seconds. Try again. |
+| macOS asks whether `passhand` may use a Keychain item | Click **Always Allow**. Without an Apple Development certificate this comes back after every rebuild. |
+| An `auto` login doesn't fill while you're away | Stay logged in to macOS, keep the Mac awake (`caffeinate -dimsu &`), and keep Chrome open with the extension enabled. |
+| "Refusing to fill on http://…" | Only https pages are filled. Plain http works only for `localhost`, `*.localhost` and `*.test`. |
 
 ## Limitations
 

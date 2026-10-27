@@ -29,6 +29,10 @@ Layout:
   talks to the background worker, which forwards its requests to the helper.
 - `tests/`: Node tests for the page-side field detection and filling (jsdom).
 
+The rules in "Using Passhand as an agent" are also the MCP server's `instructions`
+(`helper/Sources/passhand/MCPServer.swift`), which is all an agent outside this repository sees. Change
+both together.
+
 Build and test:
 
 ```bash
