@@ -5,8 +5,12 @@
   "description": "Lets AI agents in Claude desktop or Claude Code log in from your Mac's Keychain. Doesn't work from Claude's Chrome side panel.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv7kDSqo92VgMAxnl42IAkecCLzDd9fdZrepC0+MSx0iqUZJN8RIkOBOW7CnS1SU/jJoS7hRVkAsp+Q1TcVIjr+JI4SMaBaJVI1rz3JMKKJdeaIJog519ty6TKFUo5kaHOLASgnIJKgAy2AD2gbz5MiJVTjtQTVv4/nYXM0JSf66C1zoXeW2suUTm0kSODk64287J2Gr54+exf5S2QYq4py4fE5HuhuJfkUUq7ZDAIlYZpKSxFfBpg2IaGLypk9eMQP/HrkOvu0+Rp6ptzfxoGLrlXY1BmyHY6uUCMC8GuCilUqppScFDPTxVN3+Kc9ngX4LMPfzczcXZ/WojrOrLOwIDAQAB",
   "minimum_chrome_version": "110",
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
   "background": { "service_worker": "background.js" },
-  "action": { "default_title": "Passhand logins" },
+  "action": {
+    "default_title": "Passhand logins",
+    "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png" }
+  },
   "options_ui": { "page": "options.html", "open_in_tab": true },
   "permissions": ["nativeMessaging", "scripting", "tabs", "alarms"],
   "host_permissions": ["<all_urls>"]
