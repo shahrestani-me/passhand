@@ -23,7 +23,9 @@ When a page asks for a username and password:
 Layout:
 
 - `helper/`: Swift package, one binary with three roles: MCP server (`mcp`), Chrome native host
-  (started with `chrome-extension://…` as its first argument), and CLI.
+  (started with `chrome-extension://…` as its first argument), and CLI. Builds on macOS and Windows;
+  platform code sits behind `#if os(Windows)`: `Vault.swift` (Keychain, Touch ID) vs `VaultWindows.swift`
+  (Credential Manager, Windows Hello), and `LocalSocket.swift` (Unix socket vs named pipe).
 - `extension/`: Manifest V3 extension. `snapshotPage` and `fillPage` run inside the page and must
   stay self-contained. `options.html`/`options.js` is the settings page for managing logins; it only
   talks to the background worker, which forwards its requests to the helper.
@@ -36,9 +38,13 @@ both together.
 Build and test:
 
 ```bash
-swift build -c release --package-path helper     # macOS only
+swift build -c release --package-path helper     # on macOS or Windows (CI builds both)
 cd tests && npm install && npm test
 ```
+
+`install.sh`/`uninstall.sh` are the macOS installers, `install.ps1`/`uninstall.ps1` the Windows ones.
+Windows code can't be built from a Mac; the Windows CI job builds it, runs the installer and smoke-tests
+the installed helper.
 
 Invariants. Don't weaken these, and treat any change that touches them as security-sensitive:
 
@@ -48,6 +54,8 @@ Invariants. Don't weaken these, and treat any change that touches them as securi
 - A password is only written into `type=password` inputs, after validating every target first.
 - The origin is re-checked right before writing.
 - Duplicate tabs are refused, not guessed.
-- Touch ID before every password fill unless the login is `auto`; enabling `auto` needs Touch ID.
-- Only the extension's own settings page can manage logins, every change from it needs Touch ID
-  (except turning `auto` off), and saved passwords are never sent back to it.
+- Touch ID (Windows Hello on Windows) before every password fill unless the login is `auto`; enabling
+  `auto` needs it too.
+- Only the extension's own settings page can manage logins, every change from it needs Touch ID or
+  Windows Hello (except turning `auto` off), and saved passwords are never sent back to it.
+- Only the current user can reach the local socket (Windows: both pipe ends check the other's SID).

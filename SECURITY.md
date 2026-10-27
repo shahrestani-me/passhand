@@ -12,9 +12,9 @@ Passhand handles passwords, so this file says plainly what it protects against a
 | A page tricking the filler into a visible text field or search box | A password is only written into an `<input type="password">`, validated before anything is filled. |
 | A redirect between "inspect" and "fill" | The origin is checked again in Chrome and inside the page right before writing. |
 | Filling the wrong tab when several show the same page | With no `tab_id`, duplicates are refused instead of guessed. |
-| Another local user or process talking to the helper | The socket is `0600` inside a `0700` folder, and the peer's uid is checked. |
-| An agent with shell access silently enabling unattended fills | Turning `auto` on requires Touch ID. |
-| An agent driving Chrome changing logins on the settings page | Every change from the settings page (add, replace, remove, `auto` on) requires Touch ID on the Mac. |
+| Another local user or process talking to the helper | macOS: the socket is `0600` inside a `0700` folder, and the peer's uid is checked. Windows: the named pipe's DACL admits only your user, remote clients are rejected, and each end checks that the other runs as your user (so another user can't take over the pipe name). |
+| An agent with shell access silently enabling unattended fills | Turning `auto` on requires Touch ID (Windows Hello on Windows). |
+| An agent driving Chrome changing logins on the settings page | Every change from the settings page (add, replace, remove, `auto` on) requires Touch ID or Windows Hello. |
 | A web page or another extension managing logins | Only Passhand's own settings page can send login requests to the helper, and only the fields each request needs are forwarded. The page never receives saved passwords. |
 | Insecure pages | https only (http only for `localhost`, `*.localhost`, `*.test`). |
 
@@ -25,6 +25,11 @@ Passhand handles passwords, so this file says plainly what it protects against a
   accounts only.
 - **Malware running as your user.** It could talk to the same socket or Keychain items (macOS shows a
   prompt for Keychain items created by another binary). Passhand is not a sandbox.
+- **On Windows, programs running as you reading Credential Manager.** Credential Manager has no
+  per-program access list, so any process running as your user can read Passhand's saved passwords
+  without a prompt. That includes an agent with a shell tool (for example Claude Code). Windows Hello
+  gates Passhand's own fills and changes, not other programs' reads. On Windows, keep personal accounts
+  out of Passhand when an agent can run commands as you, or use separate test accounts.
 - **The page itself.** After filling, the site's JavaScript can read the field, as with any autofill.
 - **A compromised Chrome profile or extension with access to the same pages.**
 - **Field labels sent to the local model.** With the optional Ollama fallback, field names and labels
@@ -33,11 +38,16 @@ Passhand handles passwords, so this file says plainly what it protects against a
 
 ## Design notes
 
-- Logins are generic-password items in your login Keychain (`service = "passhand:<origin>"`,
+- macOS: logins are generic-password items in your login Keychain (`service = "passhand:<origin>"`,
   `account = username`). The fill mode is stored on the item (`fill:touchid` or `fill:auto`).
-- The host logs which login was filled where (`~/Library/Application Support/passhand/host.log`),
-  never values.
-- An unanswered Touch ID prompt is cancelled after 90 seconds, so nothing fills minutes later.
+- Windows: logins are generic credentials in Credential Manager (`target = "passhand:<origin> <username>"`,
+  saved for this computer only, not roamed). The fill mode is stored in the credential's comment
+  (`fill:hello` or `fill:auto`). Windows Hello is asked for through `UserConsentVerifier`; the local
+  socket is the pipe `\\.\pipe\passhand-<your user SID>`.
+- The host logs which login was filled where (`~/Library/Application Support/passhand/host.log`, or
+  `%LOCALAPPDATA%\passhand\host.log` on Windows), never values.
+- An unanswered Touch ID or Windows Hello prompt is cancelled after 90 seconds, so nothing fills
+  minutes later.
 - The `key` in the extension manifest is a public key that pins the extension ID. No private key is in
   this repository.
 
