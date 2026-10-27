@@ -12,6 +12,19 @@ The password never enters the model's context, its logs, or the AI provider's se
 > Status: early. macOS + Google Chrome. Tested with Claude in Chrome driven from Claude desktop.
 > Any MCP client that can also drive Chrome can use it.
 
+### Where it works
+
+Passhand works with agents that run on your Mac and can use MCP tools, such as:
+
+- **Claude desktop** (with Claude in Chrome connected)
+- **Claude Code**
+- other MCP clients that also drive Chrome
+
+**It does not work from the Claude side panel inside Chrome** (the chat you open from the Claude
+extension's icon). That panel can't use tools installed on your Mac, so it can't reach Passhand. If you
+ask it to log in, it will say it doesn't have the password. Ask from Claude desktop or Claude Code
+instead.
+
 ---
 
 ## Why this exists
@@ -157,6 +170,8 @@ and ask your agent to log in.
 ## Limitations
 
 - macOS and Chrome only for now.
+- Not usable from the Claude side panel in Chrome; use Claude desktop or Claude Code
+  (see [Where it works](#where-it-works)).
 - Not handled: 2FA codes, passkeys, CAPTCHAs, sign-up and change-password forms, logins in
   cross-origin iframes. Agents should hand those back to you.
 - Exact origins: `github.com` and `www.github.com` are different entries.
