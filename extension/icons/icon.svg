@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4471e8"/><stop offset="1" stop-color="#2346b0"/></linearGradient></defs>
+  <rect x="8" y="8" width="112" height="112" rx="26" fill="url(#bg)"/>
+  <!-- an agent, a dotted bridge, and the key it is handed -->
+  <g fill="#fff">
+    <rect x="18" y="56" width="38" height="32" rx="10"/>
+    <rect x="35" y="44" width="4" height="12"/><circle cx="37" cy="42" r="5"/>
+  </g>
+  <circle cx="29" cy="72" r="4.5" fill="#2f5bd3"/><circle cx="45" cy="72" r="4.5" fill="#2f5bd3"/>
+  <path d="M50 46 Q73 20 88 38" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-dasharray="0.1 9"/>
+  <g fill="none" stroke="#fff" stroke-linecap="round">
+    <circle cx="94" cy="52" r="10" stroke-width="6.5"/>
+    <path d="M94 62 V98" stroke-width="7.5"/>
+    <path d="M94 86 H103 M94 96 H101" stroke-width="6.5"/>
+  </g>
+</svg>
