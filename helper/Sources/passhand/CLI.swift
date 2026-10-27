@@ -94,15 +94,21 @@ enum CLI {
         print("Helper binary:   \(CommandLine.arguments[0])")
         print("Saved logins:    \(Vault.list().count)")
 
-        do {
-            let r = try SocketClient.request(["op": "ping"], timeout: 8)
-            if r["extension"] as? Bool == true {
-                print("Chrome helper:   running, extension answering ✓")
-            } else {
-                print("Chrome helper:   running, but the extension did not answer ✗")
-            }
-        } catch {
+        // One line per browser (or Chrome profile) running Passhand.
+        let hosts = Browsers.hosts()
+        if hosts.isEmpty {
             print("Chrome helper:   not reachable ✗ — open Chrome and check the Passhand extension is enabled (after ./install.sh, reload it on chrome://extensions)")
+        }
+        for (i, (host, r)) in zip(hosts, Browsers.ask(hosts, ["op": "ping"], timeout: 8)).enumerated() {
+            let label = (i == 0 ? "Chrome helper:" : "").padding(toLength: 17, withPad: " ", startingAt: 0)
+            let browser = "\(r?["browser"] as? String ?? "?") (helper pid \(host.pid))"
+            if r == nil {
+                print("\(label)\(browser): not reachable ✗")
+            } else if r?["extension"] as? Bool == true {
+                print("\(label)\(browser): running, extension answering ✓")
+            } else {
+                print("\(label)\(browser): running, but the extension did not answer ✗")
+            }
         }
 
         let claudeOK: Bool = {

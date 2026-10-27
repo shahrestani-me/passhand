@@ -11,8 +11,8 @@ Passhand handles passwords, so this file says plainly what it protects against a
 | A prompt-injected page convincing the agent to fill the password somewhere else | The agent only passes a URL and tab id. Which password is used, and where it can go, is decided by the tab's real origin. |
 | A page tricking the filler into a visible text field or search box | A password is only written into an `<input type="password">`, validated before anything is filled. |
 | A redirect between "inspect" and "fill" | The origin is checked again in Chrome and inside the page right before writing. |
-| Filling the wrong tab when several show the same page | With no `tab_id`, duplicates are refused instead of guessed. |
-| Another local user or process talking to the helper | The socket is `0600` inside a `0700` folder, and the peer's uid is checked. |
+| Filling the wrong tab when several show the same page | With no `tab_id`, duplicates are refused instead of guessed. The same page open in two browsers is always refused. |
+| Another local user or process talking to the helper | Each browser's helper has its own socket, `0600` inside a `0700` folder. Both ends check the other's uid. A helper only deletes the socket it created. |
 | An agent with shell access silently enabling unattended fills | Turning `auto` on requires Touch ID. |
 | An agent driving Chrome changing logins on the settings page | Every change from the settings page (add, replace, remove, `auto` on) requires Touch ID on the Mac. |
 | A web page or another extension managing logins | Only Passhand's own settings page can send login requests to the helper, and only the fields each request needs are forwarded. The page never receives saved passwords. |

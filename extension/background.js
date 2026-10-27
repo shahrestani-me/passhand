@@ -115,6 +115,8 @@ async function handle(msg) {
   switch (msg.cmd) {
     case "ping":
       return { pong: true };
+    case "locate":
+      return locate(msg.page_url, msg.tab_id);
     case "inspect":
       return inspect(msg.page_url, msg.tab_id);
     case "fill":
@@ -124,7 +126,24 @@ async function handle(msg) {
   }
 }
 
+// When several browsers run Passhand, the MCP side asks each one this before filling, and picks the
+// browser with the best match ("tab_id" beats "url" beats "path"). Reads nothing from the page.
+async function locate(pageUrl, tabId) {
+  const { by, tabs } = await matchTabs(pageUrl, tabId);
+  return { by, count: tabs.length };
+}
+
 async function findTab(pageUrl, tabId) {
+  const { tabs } = await matchTabs(pageUrl, tabId);
+  if (!tabs.length) throw new Error("No open tab matches " + pageUrl + ". Pass the URL of the login tab exactly as it is open now.");
+  if (tabs.length > 1) {
+    throw new Error(tabs.length + " tabs are open on " + pageUrl + ", so nothing was filled (it could be the wrong tab). " +
+      "Pass tab_id, make this tab's URL unique (for example add ?login=1), or close the other tabs.");
+  }
+  return tabs[0];
+}
+
+async function matchTabs(pageUrl, tabId) {
   let wanted;
   try {
     wanted = new URL(pageUrl);
@@ -141,19 +160,15 @@ async function findTab(pageUrl, tabId) {
   if (Number.isInteger(tabId)) {
     try {
       const t = await chrome.tabs.get(tabId);
-      if (t.url && originAndPath(t.url) === originAndPath(wanted.href)) return t;
+      if (t.url && originAndPath(t.url) === originAndPath(wanted.href)) return { by: "tab_id", tabs: [t] };
     } catch { /* not a Chrome tab id; fall back to URL matching */ }
   }
 
   const tabs = (await chrome.tabs.query({})).filter((t) => t.url);
-  let matches = tabs.filter((t) => withoutHash(t.url) === withoutHash(wanted.href));
-  if (!matches.length) matches = tabs.filter((t) => originAndPath(t.url) === originAndPath(wanted.href));
-  if (!matches.length) throw new Error("No open tab matches " + pageUrl + ". Pass the URL of the login tab exactly as it is open now.");
-  if (matches.length > 1) {
-    throw new Error(matches.length + " tabs are open on " + pageUrl + ", so nothing was filled (it could be the wrong tab). " +
-      "Pass tab_id, make this tab's URL unique (for example add ?login=1), or close the other tabs.");
-  }
-  return matches[0];
+  const exact = tabs.filter((t) => withoutHash(t.url) === withoutHash(wanted.href));
+  if (exact.length) return { by: "url", tabs: exact };
+  const samePath = tabs.filter((t) => originAndPath(t.url) === originAndPath(wanted.href));
+  return { by: samePath.length ? "path" : null, tabs: samePath };
 }
 
 async function inspect(pageUrl, tabId) {
