@@ -101,7 +101,7 @@ enum CLI {
         }
         for (i, (host, r)) in zip(hosts, Browsers.ask(hosts, ["op": "ping"], timeout: 8)).enumerated() {
             let label = (i == 0 ? "Chrome helper:" : "").padding(toLength: 17, withPad: " ", startingAt: 0)
-            let browser = "\(r?["browser"] as? String ?? "?") (helper pid \(host.pid))"
+            let browser = Browsers.label(host, r)
             if r == nil {
                 print("\(label)\(browser): not reachable ✗")
             } else if r?["extension"] as? Bool == true {

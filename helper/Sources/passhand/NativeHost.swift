@@ -102,11 +102,13 @@ final class ExtensionLink {
 }
 
 /// Local socket the MCP process connects to. Only this user can reach it (0600 file in a 0700 folder,
-/// plus a peer uid check). Each host has its own, sockets/<pid>.sock, so several browsers can run
-/// Passhand at once and the MCP side picks the one that has the tab (see Browsers.swift).
+/// plus a peer uid check). Each host has its own, sockets/<pid>-<random>.sock, so several browsers can
+/// run Passhand at once and the MCP side picks the one that has the tab (see Browsers.swift).
 enum SocketServer {
     private static let fillLock = NSLock()
-    private static let path = Paths.sockets.appendingPathComponent("\(getpid()).sock").path
+    /// The random part keeps a later host that gets the same pid from ever using this name.
+    private static let path = Paths.sockets.appendingPathComponent(
+        "\(getpid())-\(String(UInt32.random(in: 0 ..< 1 << 24), radix: 16)).sock").path
     /// What was bound, so stop() deletes only this socket and never one another host made.
     private static var bound: (dev: dev_t, ino: ino_t)?
 
@@ -120,10 +122,11 @@ enum SocketServer {
     }()
 
     static func start() {
-        // A file with our pid's name can only be left from a host that died; no running process has our pid.
-        unlink(path)
+        // Bound under another name first: the MCP side deletes a .sock nobody listens on, so this one
+        // only gets its name once it listens.
+        let staging = path + ".new"
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0, var addr = UnixAddress.make(path) else { Log.write("could not create socket"); return }
+        guard fd >= 0, var addr = UnixAddress.make(staging) else { Log.write("could not create socket"); return }
         let oldMask = umask(0o077)
         let rc = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
@@ -131,8 +134,9 @@ enum SocketServer {
             }
         }
         umask(oldMask)
-        guard rc == 0, listen(fd, 8) == 0 else { Log.write("could not listen on socket (errno \(errno))"); return }
-        chmod(path, 0o600)
+        guard rc == 0, listen(fd, SOMAXCONN) == 0 else { Log.write("could not listen on socket (errno \(errno))"); return }
+        chmod(staging, 0o600)
+        guard rename(staging, path) == 0 else { Log.write("could not name the socket (errno \(errno))"); unlink(staging); return }
         var st = stat()
         if lstat(path, &st) == 0 { bound = (st.st_dev, st.st_ino) }
 
@@ -173,7 +177,8 @@ enum SocketServer {
             if let tab = request["tab_id"] as? Int { locate["tab_id"] = tab }
             do {
                 let found = try ExtensionLink.shared.call(locate, timeout: 5)
-                response = ["ok": true, "by": found["by"] ?? NSNull(), "count": found["count"] as? Int ?? 0, "browser": browser]
+                // Only how many tabs match counts across browsers, not how (see Browsers.fillLogin).
+                response = ["ok": true, "count": found["count"] as? Int ?? 0, "browser": browser]
             } catch {
                 response = ["ok": false, "error": "\(error)"]
             }

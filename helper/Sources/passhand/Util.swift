@@ -28,7 +28,7 @@ enum Paths {
         }
         return home.appendingPathComponent("Library/Application Support/passhand", isDirectory: true)
     }()
-    /// One socket per native host, named <pid>.sock: every browser (every Chrome profile) starts its own host.
+    /// One socket per native host, named <pid>-<random>.sock: every browser (every Chrome profile) starts its own host.
     static var sockets: URL { support.appendingPathComponent("sockets", isDirectory: true) }
     static var config: URL { support.appendingPathComponent("config.json") }
     static var log: URL { support.appendingPathComponent("host.log") }
@@ -174,23 +174,40 @@ enum UnixAddress {
 enum SocketClient {
     static let notRunning = "The Passhand Chrome extension isn't connected. Ask the user to open Chrome and check that the Passhand extension is enabled (passhand doctor shows the details)."
 
-    static func request(_ obj: [String: Any], socket path: String, timeout: Int = 120) throws -> [String: Any] {
+    /// Nothing listens on the socket (or it's gone): the host that made it has exited.
+    struct NotListening: Error, CustomStringConvertible {
+        var description: String { SocketClient.notRunning }
+    }
+
+    /// Connects to a host's socket and returns the descriptor, after checking who is on the other end.
+    static func connect(_ path: String) throws -> Int32 {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw VaultError.message("Could not open a local socket") }
-        defer { close(fd) }
-        guard var addr = UnixAddress.make(path) else { throw VaultError.message("Socket path too long") }
+        guard var addr = UnixAddress.make(path) else { close(fd); throw VaultError.message("Socket path too long") }
         let rc = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
             }
         }
-        guard rc == 0 else { throw VaultError.message(notRunning) }
+        guard rc == 0 else {
+            let error = errno
+            close(fd)
+            if error == ECONNREFUSED || error == ENOENT { throw NotListening() }
+            throw VaultError.message("Could not reach Passhand's helper (errno \(error)).")
+        }
         // The folder is 0700, but check the other end as well: it must be one of this user's processes.
         var uid: uid_t = 0
         var gid: gid_t = 0
         guard getpeereid(fd, &uid, &gid) == 0, uid == getuid() else {
+            close(fd)
             throw VaultError.message("Passhand's socket is held by another user's process, so nothing was sent.")
         }
+        return fd
+    }
+
+    static func request(_ obj: [String: Any], socket path: String, timeout: Int = 120) throws -> [String: Any] {
+        let fd = try connect(path)
+        defer { close(fd) }
         var tv = timeval(tv_sec: timeout, tv_usec: 0)
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
         var data = try JSONSerialization.data(withJSONObject: obj)

@@ -85,7 +85,8 @@ Agent ──fill_login(page_url, tab_id)──► MCP helper ──(local socket
 - **No guessing between tabs.** If several tabs show the same URL and no `tab_id` is given, it refuses.
 - **Several browsers at once.** Each browser (and each Chrome profile) with the extension runs its own
   helper on its own socket, and `fill_login` goes to the browser that has the tab. The same page open in
-  two browsers is refused, even with a `tab_id`: each browser numbers its tabs separately.
+  two browsers is refused, even with a `tab_id` (each browser numbers its tabs separately), and so is any
+  fill while one of the browsers doesn't answer.
 - **Touch ID before every password fill**, unless you marked that login `auto` (which itself needs Touch ID).
 - **Main frame only.** Logins inside cross-origin iframes are not filled.
 - Field detection uses page heuristics (`autocomplete`, `type=password`, the field before it). An
@@ -196,7 +197,8 @@ Claude desktop and the optional local model.
 | The agent has no `fill_login` tool | Restart Claude desktop after installing. For other MCP clients, add the stdio server (see [Install](#install)). The Claude side panel in Chrome can't use it (see [Where it works](#where-it-works)). |
 | "No saved login for https://…" | Add one on the settings page or with `passhand add`. Origins are exact: `www.` and other subdomains are separate entries. `passhand list` shows what's saved. |
 | "N tabs are open on …, so nothing was filled" | The agent should pass `tab_id`. Otherwise close the duplicate tabs. |
-| "N tabs are open on … in 2 browsers" | The page is open in two browsers running Passhand. Close it in one, or make the URL unique (for example add `?login=1`). `passhand doctor` lists the browsers. |
+| "… is open in 2 browsers" | The login page is open in two browsers running Passhand (or two Chrome profiles). Close it in all but one. `passhand doctor` lists the browsers by helper pid. |
+| "Nothing was filled: Passhand in … didn't answer" | One of the browsers running Passhand didn't answer in time. Try again; if it keeps happening, reload the extension in that browser (`passhand doctor` shows which one). |
 | "No open tab matches …" | `page_url` must be the tab's URL as it is open now, after any redirects. |
 | "Couldn't find a login form on this page" | Make sure the form is visible (for example, open the sign-in dialog first), then try again. Logins inside cross-origin iframes aren't supported. For unusual forms, the optional local model can help (see [Configuration](#configuration-optional)). |
 | "Touch ID was not confirmed, so nothing was filled." | The prompt was declined, or left open for 90 seconds. Try again. |

@@ -1,26 +1,29 @@
 import Foundation
 
 /// The browsers running Passhand right now, as the MCP side and `passhand doctor` see them. Every browser
-/// (every Chrome profile, in fact) starts its own native host, listening on sockets/<pid>.sock.
+/// (every Chrome profile, in fact) starts its own native host, listening on sockets/<pid>-<random>.sock.
 enum Browsers {
     struct Host {
         let pid: pid_t
         let socket: String
     }
 
-    /// The hosts that are running. A socket left by a host that was killed is deleted here, but only when
-    /// no process has its pid any more, so a running host's socket is never touched.
+    /// The hosts that are running. A socket nobody listens on is left by a host that was killed, and is
+    /// deleted here. A host only gives its socket a .sock name once it listens, and the random part means
+    /// a new host never reuses an old name, so a running host's socket is never deleted.
     static func hosts() -> [Host] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: Paths.sockets.path)) ?? []
         var hosts: [Host] = []
         for name in names.sorted() where name.hasSuffix(".sock") {
-            guard let pid = pid_t(name.dropLast(5)), pid > 0 else { continue }
+            guard let pid = pid_t(name.prefix(while: \.isNumber)), pid > 0 else { continue }
             let path = Paths.sockets.appendingPathComponent(name).path
-            if kill(pid, 0) != 0 && errno == ESRCH {
+            do {
+                close(try SocketClient.connect(path))
+            } catch is SocketClient.NotListening {
                 var st = stat()
                 if lstat(path, &st) == 0, st.st_mode & S_IFMT == S_IFSOCK { unlink(path) }
                 continue
-            }
+            } catch {}
             hosts.append(Host(pid: pid, socket: path))
         }
         return hosts
@@ -37,8 +40,14 @@ enum Browsers {
         return answers
     }
 
-    /// Sends fill_login to the one browser that has the tab. The same page open in two browsers is
-    /// refused, like two tabs in one: tab ids are numbered per browser, so they can't tell them apart.
+    /// "Google Chrome (helper pid 123)": two Chrome profiles have the same browser name.
+    static func label(_ host: Host, _ answer: [String: Any]?) -> String {
+        "\(answer?["browser"] as? String ?? "a browser") (helper pid \(host.pid))"
+    }
+
+    /// Sends fill_login to the browser that has the tab. It fills only when exactly one browser has the
+    /// page and every browser answered; anything else could be the wrong browser, so it's refused. Tab ids
+    /// can't settle it: each browser numbers its tabs separately.
     static func fillLogin(_ request: [String: Any]) throws -> [String: Any] {
         let hosts = hosts()
         guard !hosts.isEmpty else { throw VaultError.message(SocketClient.notRunning) }
@@ -49,38 +58,35 @@ enum Browsers {
         if let tab = request["tab_id"] { locate["tab_id"] = tab }
         let answers = ask(hosts, locate, timeout: 10)
 
-        // The best kind of match wins, as it does within one browser: tab_id, then the exact URL, then origin and path.
-        let rank = ["tab_id": 0, "url": 1, "path": 2]
-        var found: [(host: Host, browser: String, rank: Int, count: Int)] = []
-        var answered = 0
+        var found: [(host: Host, label: String)] = []
+        var silent: [String] = []
         var errors: [String] = []
         for (host, answer) in zip(hosts, answers) {
-            guard let answer else { continue }
-            guard answer["ok"] as? Bool == true else {
-                if let error = answer["error"] as? String { errors.append(error) }
+            guard let answer, answer["ok"] as? Bool == true else {
+                silent.append(label(host, answer))
+                if let error = answer?["error"] as? String { errors.append(error) }
                 continue
             }
-            answered += 1
-            if let by = answer["by"] as? String, let r = rank[by], let count = answer["count"] as? Int, count > 0 {
-                found.append((host, answer["browser"] as? String ?? "a browser", r, count))
-            }
+            if answer["count"] as? Int ?? 0 > 0 { found.append((host, label(host, answer))) }
         }
 
-        guard let best = found.map(\.rank).min() else {
-            if answered == 0, let error = errors.first { throw VaultError.message(error) }
-            guard answered > 0 else { throw VaultError.message(SocketClient.notRunning) }
-            let silent = hosts.count - answered
-            var text = "No open tab matches \(pageURL) in any browser running Passhand. Pass the URL of the login tab exactly as it is open now."
-            if silent > 0 { text += " (\(silent) of \(hosts.count) browsers didn't answer; passhand doctor shows which.)" }
-            throw VaultError.message(text)
+        // An error every browser gives (an invalid page_url, say) is the answer itself.
+        guard silent.count < hosts.count else { throw VaultError.message(errors.first ?? SocketClient.notRunning) }
+        guard silent.isEmpty else {
+            throw VaultError.message("Nothing was filled: Passhand in \(silent.joined(separator: ", ")) didn't answer, and it could have this page open too. " +
+                "Try again in a moment. If it keeps happening, the user can reload the Passhand extension in that browser (passhand doctor shows which browsers answer).")
         }
-        let matches = found.filter { $0.rank == best }
-        guard matches.count == 1 else {
-            let total = matches.reduce(0) { $0 + $1.count }
-            let browsers = matches.map(\.browser).joined(separator: ", ")
-            throw VaultError.message("\(total) tabs are open on \(pageURL) in \(matches.count) browsers (\(browsers)), so nothing was filled (it could be the wrong tab). " +
-                "tab_id can't tell browsers apart. Make this tab's URL unique (for example add ?login=1), or close the other tabs.")
+        guard !found.isEmpty else {
+            throw VaultError.message("No open tab matches \(pageURL) in any browser running Passhand. Pass the URL of the login tab exactly as it is open now.")
         }
-        return try SocketClient.request(request, socket: matches[0].host.socket)
+        guard found.count == 1 else {
+            throw VaultError.message("\(pageURL) is open in \(found.count) browsers (\(found.map(\.label).joined(separator: ", "))), so nothing was filled (it could be the wrong one). " +
+                "tab_id can't tell browsers apart. Close the page in all but one of them, then try again.")
+        }
+        do {
+            return try SocketClient.request(request, socket: found[0].host.socket)
+        } catch is SocketClient.NotListening {
+            throw VaultError.message("\(found[0].label) closed before the login could be filled, so nothing was filled. Open the page again and retry.")
+        }
     }
 }

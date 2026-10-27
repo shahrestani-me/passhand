@@ -50,7 +50,8 @@ Invariants. Don't weaken these, and treat any change that touches them as securi
 - https only (http only for local development hosts).
 - A password is only written into `type=password` inputs, after validating every target first.
 - The origin is re-checked right before writing.
-- Duplicate tabs are refused, not guessed, including the same page open in two browsers.
+- Duplicate tabs are refused, not guessed, including the same page open in two browsers, or in one
+  browser while another doesn't answer.
 - Touch ID before every password fill unless the login is `auto`; enabling `auto` needs Touch ID.
 - Only the extension's own settings page can manage logins, every change from it needs Touch ID
   (except turning `auto` off), and saved passwords are never sent back to it.

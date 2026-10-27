@@ -126,8 +126,8 @@ async function handle(msg) {
   }
 }
 
-// When several browsers run Passhand, the MCP side asks each one this before filling, and picks the
-// browser with the best match ("tab_id" beats "url" beats "path"). Reads nothing from the page.
+// When several browsers run Passhand, the MCP side asks each one this before filling, and fills only if
+// exactly one browser has a match of any kind. Reads nothing from the page.
 async function locate(pageUrl, tabId) {
   const { by, tabs } = await matchTabs(pageUrl, tabId);
   return { by, count: tabs.length };
