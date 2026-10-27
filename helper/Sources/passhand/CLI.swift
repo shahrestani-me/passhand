@@ -102,7 +102,7 @@ enum CLI {
                 print("Chrome helper:   running, but the extension did not answer ✗")
             }
         } catch {
-            print("Chrome helper:   not reachable ✗ — open Chrome and check the Passhand extension is enabled")
+            print("Chrome helper:   not reachable ✗ — open Chrome and check the Passhand extension is enabled (after ./install.sh, reload it on chrome://extensions)")
         }
 
         let claudeOK: Bool = {
