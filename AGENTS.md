@@ -16,7 +16,9 @@ When a page asks for a username and password:
 6. 2FA codes, passkeys, CAPTCHAs, sign-up and change-password forms are out of scope. Hand them back
    to the user.
 
-`list_saved_logins` shows which sites and usernames exist, never passwords.
+`list_saved_logins` shows which sites and usernames exist and how each one fills: `auto` fills without
+asking, `touch id` waits for the user to approve each fill, so it can't finish while they're away. It
+never shows passwords.
 
 ## Working on this repository
 
