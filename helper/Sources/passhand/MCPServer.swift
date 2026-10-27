@@ -21,7 +21,9 @@ enum MCPServer {
     the chat, and never type one yourself. Don't open or use the settings page; managing logins is the user's job.
     6. 2FA codes, passkeys, CAPTCHAs, sign-up and change-password forms are out of scope. Hand them back to the user.
 
-    list_saved_logins shows which sites and usernames exist, never passwords.
+    list_saved_logins shows which sites and usernames exist and how each one fills: `auto` fills without \
+    asking, `touch id` waits for the user to approve each fill, so it can't finish while they're away. It \
+    never shows passwords.
     """
 
     static let tools: [[String: Any]] = [
@@ -60,7 +62,12 @@ enum MCPServer {
         ],
         [
             "name": "list_saved_logins",
-            "description": "List the sites and usernames saved in the user's local vault. Passwords are never included.",
+            "description": """
+            List the sites and usernames saved in the user's local vault, one per line as \
+            `origin  —  username  —  fill mode`. The fill mode is `auto` (fill_login fills without asking) or \
+            `touch id` (each fill waits up to 2 minutes for the user to approve with Touch ID, so it can't \
+            finish unattended). Passwords are never included.
+            """,
             "inputSchema": ["type": "object", "properties": [String: Any]()] as [String: Any],
         ],
     ]
@@ -135,7 +142,7 @@ enum MCPServer {
             if entries.isEmpty {
                 return ("No logins are saved yet. The user can add one on Passhand's settings page (click the Passhand icon in Chrome) or in Terminal with: passhand add <site> <username>", false)
             }
-            return (entries.map { "\($0.origin)  —  \($0.username)" }.joined(separator: "\n"), false)
+            return (entries.map { "\($0.origin)  —  \($0.username)  —  \($0.auto ? "auto" : "touch id")" }.joined(separator: "\n"), false)
 
         case "fill_login":
             guard let pageURL = args["page_url"] as? String, !pageURL.isEmpty else {

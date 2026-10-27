@@ -170,7 +170,7 @@ one, which keeps that permission across rebuilds.
 | Tool | Arguments | Returns |
 |---|---|---|
 | `fill_login` | `page_url` (required), `tab_id` (recommended), `username`, `submit` | "Filled the username and password for … on …" or an error |
-| `list_saved_logins` | — | Sites and usernames, never passwords |
+| `list_saved_logins` | — | Sites, usernames and fill mode (`auto` or `touch id`), never passwords |
 
 The MCP server gives connected agents its usage rules automatically. They are the same rules as in
 [AGENTS.md](AGENTS.md).
