@@ -72,6 +72,21 @@ enum Origin {
         }
         return origin
     }
+
+    /// Like normalize, but for saving a login: the host must be a real domain (or a local development
+    /// host) and the input can't carry a user name, so "anna" or "anna@example.com" typed into the site
+    /// field isn't saved as a site.
+    static func forSaving(_ input: String) -> String? {
+        guard let origin = normalize(input) else { return nil }
+        var s = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !s.contains("://") { s = "https://" + s }
+        guard let c = URLComponents(string: s), c.user == nil, c.password == nil,
+              let host = c.host?.lowercased()
+        else { return nil }
+        let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard isLocal(host) || (labels.count >= 2 && !labels.contains(where: \.isEmpty)) else { return nil }
+        return origin
+    }
 }
 
 enum Log {

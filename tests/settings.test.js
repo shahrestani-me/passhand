@@ -207,3 +207,56 @@ test("the auto switch only changes after the helper confirms", async () => {
     { cmd: "logins.auto", origin: "https://app.example.com", username: "admin@example.com", auto: true });
   assert.equal(box.checked, false, "still off after a refused Touch ID");
 });
+
+test("only real site addresses are accepted, and the preview shows the exact origin", async () => {
+  const { w } = await loadPage(() => ({ ok: true, logins: [] }));
+  const cases = {
+    "dev.receipts-manager.com": "https://dev.receipts-manager.com",
+    " https://Example.COM:443/login?x=1 ": "https://example.com",
+    "https://example.com:8443": "https://example.com:8443",
+    "http://localhost:3000": "http://localhost:3000",
+    "http://app.test": "http://app.test",
+    "anna": null,
+    "Pa55word@123": null,
+    "anna@example.com": null,
+    "https://anna:secret@example.com": null,
+    "http://example.com": null,
+    "anna.": null,
+    ".com": null,
+    "": null,
+  };
+  for (const [input, expected] of Object.entries(cases)) {
+    assert.equal(w.siteOrigin(input), expected, JSON.stringify(input));
+  }
+});
+
+test("typing a site shows where it will be saved, or why it can't be", async () => {
+  const { doc } = await loadPage(() => ({ ok: true, logins: [] }));
+  const site = doc.getElementById("add").elements.site;
+  const preview = doc.getElementById("site-preview");
+  site.value = "dev.receipts-manager.com";
+  site.dispatchEvent(new doc.defaultView.Event("input"));
+  assert.equal(preview.textContent, "Will be saved for https://dev.receipts-manager.com");
+  site.value = "anna";
+  site.dispatchEvent(new doc.defaultView.Event("input"));
+  assert.equal(preview.className, "hint invalid");
+});
+
+test("an invalid site is never sent to the helper", async () => {
+  const { doc, sent } = await loadPage(() => ({ ok: true, logins: [] }));
+  const f = doc.getElementById("add").elements;
+  f.site.value = "anna";
+  f.username.value = "Pa55word@123";
+  f.password.value = "not-a-real-password";
+  doc.getElementById("add").dispatchEvent(new doc.defaultView.Event("submit", { cancelable: true }));
+  await settle(); await settle();
+  assert.equal(sent.some((m) => m.cmd === "logins.save"), false);
+  assert.equal(doc.getElementById("status").className, "error");
+});
+
+test("'Add another account' fills the site and its preview", async () => {
+  const { doc } = await loadPage(() => ({ ok: true, logins: twoAccounts }));
+  doc.querySelector(".site button").click();
+  assert.equal(doc.getElementById("add").elements.site.value, "https://app.example.com");
+  assert.equal(doc.getElementById("site-preview").textContent, "Will be saved for https://app.example.com");
+});

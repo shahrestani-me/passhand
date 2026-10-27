@@ -5,6 +5,44 @@
 const form = document.getElementById("add");
 const list = document.getElementById("logins");
 const statusLine = document.getElementById("status");
+const sitePreview = document.getElementById("site-preview");
+
+// The origin a typed site will be saved under, or null if it isn't a usable site. Mirrors the helper's
+// Origin.forSaving, which has the final say: https only (http for local development hosts), a real
+// domain rather than a bare word like "anna", and no user name in the address.
+function siteOrigin(input) {
+  let s = String(input).trim();
+  if (!s) return null;
+  if (!s.includes("://")) s = "https://" + s;
+  let u;
+  try { u = new URL(s); } catch { return null; }
+  if (u.username || u.password) return null;
+  const host = u.hostname.toLowerCase();
+  const local = host === "localhost" || host === "127.0.0.1" || host.endsWith(".localhost") || host.endsWith(".test");
+  if (!(u.protocol === "https:" || (u.protocol === "http:" && local))) return null;
+  const labels = host.split(".");
+  if (!local && (labels.length < 2 || labels.some((l) => !l))) return null;
+  return u.origin;
+}
+
+function updateSitePreview() {
+  const typed = form.elements.site.value.trim();
+  const origin = siteOrigin(typed);
+  if (!typed) {
+    sitePreview.className = "hint";
+    sitePreview.replaceChildren("Enter the site's address, like https://example.com.");
+  } else if (origin) {
+    sitePreview.className = "hint";
+    sitePreview.replaceChildren("Will be saved for ", el("b", { textContent: origin }));
+  } else {
+    sitePreview.className = "hint invalid";
+    sitePreview.replaceChildren("Not a site address. Enter the full address, like https://example.com " +
+      "(https only; http just for localhost and *.test).");
+  }
+  return origin;
+}
+
+form.elements.site.addEventListener("input", updateSitePreview);
 
 async function ask(message) {
   let reply;
@@ -74,6 +112,7 @@ function render(logins) {
     const addAnother = el("button", { type: "button", textContent: "Add another account" });
     addAnother.addEventListener("click", () => {
       form.elements.site.value = origin;
+      updateSitePreview();
       form.elements.username.value = "";
       form.elements.password.value = "";
       form.elements.username.focus();
@@ -114,6 +153,11 @@ function account(login) {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const f = form.elements;
+  if (!updateSitePreview()) {
+    setStatus("Check the site address before saving.", "error");
+    f.site.focus();
+    return;
+  }
   const reply = await run(
     { cmd: "logins.save", site: f.site.value.trim(), username: f.username.value.trim(),
       password: f.password.value, auto: f.auto.checked },

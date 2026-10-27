@@ -37,6 +37,8 @@
     button.danger { color: var(--danger); }
     button:disabled, input:disabled { opacity: .55; cursor: default; }
     .hint { font-size: 13px; color: var(--muted); }
+    .hint.invalid { color: var(--danger); }
+    .hint b { color: var(--text); font-weight: 600; word-break: break-all; }
     #status { min-height: 1.5em; margin: 0 0 16px; }
     #status.error { color: var(--danger); }
     #status.ok { color: var(--ok); }
@@ -62,7 +64,9 @@
       <h2>Add a login</h2>
       <form id="add" autocomplete="off">
         <label class="wide">Site
-          <input type="text" name="site" placeholder="https://example.com" required spellcheck="false" autocapitalize="off">
+          <input type="text" name="site" placeholder="https://example.com" required spellcheck="false" autocapitalize="off"
+            aria-describedby="site-preview">
+          <span id="site-preview" class="hint" aria-live="polite">Enter the site's address, like https://example.com.</span>
         </label>
         <label>Username
           <input type="text" name="username" required spellcheck="false" autocapitalize="off">

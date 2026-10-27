@@ -28,8 +28,8 @@ enum Settings {
 
         case "logins.save":
             let site = r["site"] as? String ?? ""
-            guard let origin = Origin.normalize(site) else {
-                throw VaultError.message("\(site.isEmpty ? "The site" : site) isn't accepted: only https sites (and localhost / *.test for development) can be saved.")
+            guard let origin = Origin.forSaving(site) else {
+                throw VaultError.message("\(site.isEmpty ? "The site" : site) isn't accepted: enter the site's full address, like https://example.com. Only https sites (and localhost / *.test for development) can be saved.")
             }
             let user = try username(r)
             guard let password = r["password"] as? String, !password.isEmpty else {
