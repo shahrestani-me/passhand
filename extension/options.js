@@ -9,7 +9,7 @@ const sitePreview = document.getElementById("site-preview");
 
 // The origin a typed site will be saved under, or null if it isn't a usable site. Mirrors the helper's
 // Origin.forSaving, which has the final say: https only (http for local development hosts), a real
-// domain rather than a bare word like "anna", and no user name in the address.
+// domain rather than a bare word like "alice", and no user name in the address.
 function siteOrigin(input) {
   let s = String(input).trim();
   if (!s) return null;

@@ -74,7 +74,7 @@ enum Origin {
     }
 
     /// Like normalize, but for saving a login: the host must be a real domain (or a local development
-    /// host) and the input can't carry a user name, so "anna" or "anna@example.com" typed into the site
+    /// host) and the input can't carry a user name, so "alice" or "alice@example.com" typed into the site
     /// field isn't saved as a site.
     static func forSaving(_ input: String) -> String? {
         guard let origin = normalize(input) else { return nil }

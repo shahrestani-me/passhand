@@ -211,17 +211,17 @@ test("the auto switch only changes after the helper confirms", async () => {
 test("only real site addresses are accepted, and the preview shows the exact origin", async () => {
   const { w } = await loadPage(() => ({ ok: true, logins: [] }));
   const cases = {
-    "dev.receipts-manager.com": "https://dev.receipts-manager.com",
+    "staging.example.com": "https://staging.example.com",
     " https://Example.COM:443/login?x=1 ": "https://example.com",
     "https://example.com:8443": "https://example.com:8443",
     "http://localhost:3000": "http://localhost:3000",
     "http://app.test": "http://app.test",
-    "anna": null,
+    "alice": null,
     "Pa55word@123": null,
-    "anna@example.com": null,
-    "https://anna:secret@example.com": null,
+    "alice@example.com": null,
+    "https://alice:secret@example.com": null,
     "http://example.com": null,
-    "anna.": null,
+    "alice.": null,
     ".com": null,
     "": null,
   };
@@ -234,10 +234,10 @@ test("typing a site shows where it will be saved, or why it can't be", async () 
   const { doc } = await loadPage(() => ({ ok: true, logins: [] }));
   const site = doc.getElementById("add").elements.site;
   const preview = doc.getElementById("site-preview");
-  site.value = "dev.receipts-manager.com";
+  site.value = "staging.example.com";
   site.dispatchEvent(new doc.defaultView.Event("input"));
-  assert.equal(preview.textContent, "Will be saved for https://dev.receipts-manager.com");
-  site.value = "anna";
+  assert.equal(preview.textContent, "Will be saved for https://staging.example.com");
+  site.value = "alice";
   site.dispatchEvent(new doc.defaultView.Event("input"));
   assert.equal(preview.className, "hint invalid");
 });
@@ -245,7 +245,7 @@ test("typing a site shows where it will be saved, or why it can't be", async () 
 test("an invalid site is never sent to the helper", async () => {
   const { doc, sent } = await loadPage(() => ({ ok: true, logins: [] }));
   const f = doc.getElementById("add").elements;
-  f.site.value = "anna";
+  f.site.value = "alice";
   f.username.value = "Pa55word@123";
   f.password.value = "not-a-real-password";
   doc.getElementById("add").dispatchEvent(new doc.defaultView.Event("submit", { cancelable: true }));
