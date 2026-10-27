@@ -22,7 +22,9 @@
     main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
     h1 { font-size: 24px; margin: 0 0 4px; }
     h2 { font-size: 16px; margin: 0 0 12px; }
-    .lead { color: var(--muted); margin: 0 0 24px; }
+    .lead { color: var(--muted); margin: 0 0 16px; }
+    .note { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+      border-radius: 8px; padding: 10px 14px; margin: 0 0 20px; font-size: 14px; }
     .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
     form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
@@ -57,6 +59,9 @@
     <h1>Passhand logins</h1>
     <p class="lead">AI agents can only sign in to the sites and accounts listed here. Every change asks for
       Touch ID on your Mac, and saved passwords are never shown again.</p>
+
+    <p class="note">Ask your agent to log in from <b>Claude desktop</b> or <b>Claude Code</b>. The Claude side
+      panel in Chrome can't use Passhand.</p>
 
     <p id="status" role="status" aria-live="polite"></p>
 
