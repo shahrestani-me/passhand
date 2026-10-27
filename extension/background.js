@@ -3,6 +3,8 @@
 //   inspect: find the tab the agent is on, report its real origin and the visible input fields (no values)
 //   fill:    write the values the helper sends into those fields, after re-checking the origin
 // It never decides which password to use and never sends a password anywhere but the page.
+// It also forwards requests from its own settings page (options.html) to the helper, which owns the
+// Keychain and asks for Touch ID before any change. Saved passwords never come back this way.
 
 const HOST = "me.shahrestani.passhand";
 let port = null;
@@ -17,6 +19,7 @@ function connect() {
     return;
   }
   port.onMessage.addListener((msg) => {
+    if (msg.req) return settingsReply(msg);
     handle(msg).then(
       (result) => send({ id: msg.id, ok: true, ...result }),
       (err) => send({ id: msg.id, ok: false, error: String((err && err.message) || err) })
@@ -25,6 +28,9 @@ function connect() {
   port.onDisconnect.addListener(() => {
     console.warn("[passhand] helper disconnected:", chrome.runtime.lastError?.message);
     port = null;
+    for (const req of [...settingsWaiting.keys()]) {
+      settingsReply({ req, ok: false, error: "Passhand's helper stopped. Reload this page and try again." });
+    }
   });
 }
 
@@ -42,6 +48,68 @@ chrome.runtime.onInstalled.addListener(connect);
 chrome.alarms.create("passhand-reconnect", { periodInMinutes: 1 });
 chrome.alarms.onAlarm.addListener(connect);
 connect();
+
+// ---------- Settings page ----------
+
+const SETTINGS_PAGE = chrome.runtime.getURL("options.html");
+// Which fields each request may carry to the helper; anything else the page sends is dropped.
+const SETTINGS_FIELDS = {
+  "logins.list": [],
+  "logins.save": ["site", "username", "password", "auto"],
+  "logins.remove": ["origin", "username"],
+  "logins.auto": ["origin", "username", "auto"],
+};
+const SETTINGS_TIMEOUT_MS = 120 * 1000; // longer than the helper's 90 s Touch ID timeout
+const settingsWaiting = new Map();
+
+chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
+
+// Only Passhand's own settings page may manage logins. Web pages can't reach this listener (there is no
+// externally_connectable), and the code injected into pages never sends messages.
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!isSettingsPage(sender)) {
+    sendResponse({ ok: false, error: "Only Passhand's settings page can manage logins." });
+    return false;
+  }
+  const fields = msg && Object.hasOwn(SETTINGS_FIELDS, msg.cmd) ? SETTINGS_FIELDS[msg.cmd] : null;
+  if (!fields) {
+    sendResponse({ ok: false, error: "Unknown settings request." });
+    return false;
+  }
+  const request = { cmd: msg.cmd };
+  for (const f of fields) if (f in msg) request[f] = msg[f];
+  askHelper(request).then(sendResponse);
+  return true; // answer asynchronously
+});
+
+function isSettingsPage(sender) {
+  return sender.id === chrome.runtime.id && typeof sender.url === "string" &&
+    sender.url.split(/[?#]/)[0] === SETTINGS_PAGE;
+}
+
+function askHelper(request) {
+  connect();
+  if (!port) {
+    return Promise.resolve({ ok: false, error: "Passhand's helper isn't installed or couldn't start. Run ./install.sh, then reload the extension." });
+  }
+  const req = crypto.randomUUID();
+  return new Promise((resolve) => {
+    const timer = setTimeout(
+      () => settingsReply({ req, ok: false, error: "The helper didn't answer in time. Was the Touch ID prompt left open?" }),
+      SETTINGS_TIMEOUT_MS);
+    settingsWaiting.set(req, { resolve, timer });
+    send({ ...request, req });
+  });
+}
+
+function settingsReply(msg) {
+  const waiting = settingsWaiting.get(msg.req);
+  if (!waiting) return;
+  settingsWaiting.delete(msg.req);
+  clearTimeout(waiting.timer);
+  const { req, id, ...reply } = msg;
+  waiting.resolve(reply);
+}
 
 async function handle(msg) {
   switch (msg.cmd) {

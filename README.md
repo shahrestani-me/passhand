@@ -99,6 +99,23 @@ Then:
 
 ## Use
 
+### Settings page
+
+Click the **Passhand** icon in Chrome's toolbar (or open the extension's **Options**) to manage logins
+without Terminal:
+
+- Saved logins are grouped by site, and a site can hold several accounts. Agents can only sign in to the
+  sites and accounts listed there.
+- **Add a login** saves a site, username and password to your Keychain. Saving an existing site and
+  username replaces its password.
+- Each account has an **Auto** switch and a **Remove** button.
+- Every change asks for Touch ID on your Mac (turning Auto off doesn't need it). Saved passwords are
+  never shown again.
+
+The page and the commands below edit the same Keychain items, so use whichever you prefer.
+
+### Terminal
+
 ```bash
 passhand add github.com you@example.com                 # asks for the password (not echoed)
 passhand add staging.myapp.com qa@example.com --auto    # test account: fills without Touch ID

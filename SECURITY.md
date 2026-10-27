@@ -14,6 +14,8 @@ Passhand handles passwords, so this file says plainly what it protects against a
 | Filling the wrong tab when several show the same page | With no `tab_id`, duplicates are refused instead of guessed. |
 | Another local user or process talking to the helper | The socket is `0600` inside a `0700` folder, and the peer's uid is checked. |
 | An agent with shell access silently enabling unattended fills | Turning `auto` on requires Touch ID. |
+| An agent driving Chrome changing logins on the settings page | Every change from the settings page (add, replace, remove, `auto` on) requires Touch ID on the Mac. |
+| A web page or another extension managing logins | Only Passhand's own settings page can send login requests to the helper, and only the fields each request needs are forwarded. The page never receives saved passwords. |
 | Insecure pages | https only (http only for `localhost`, `*.localhost`, `*.test`). |
 
 ## What it does not protect against
