@@ -94,7 +94,7 @@ enum MCPServer {
             reply(id, [
                 "protocolVersion": version,
                 "capabilities": ["tools": [String: Any]()] as [String: Any],
-                "serverInfo": ["name": "passhand", "version": "0.3.0"],
+                "serverInfo": ["name": "passhand", "version": "0.4.0"],
                 "instructions": instructions,
             ])
         case "ping":

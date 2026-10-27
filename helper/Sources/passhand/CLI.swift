@@ -45,8 +45,8 @@ enum CLI {
         let auto = rawArgs.contains("--auto")
         let args = rawArgs.filter { $0 != "--auto" }
         guard args.count == 2 else { fail("Usage: passhand add <site> <username> [--auto]") }
-        guard let origin = Origin.normalize(args[0]) else {
-            fail("\(args[0]) isn't accepted: only https sites (and localhost / *.test for development) can be saved.")
+        guard let origin = Origin.forSaving(args[0]) else {
+            fail("\(args[0]) isn't accepted: enter the site's full address, like example.com. Only https sites (and localhost / *.test for development) can be saved.")
         }
         let user = args[1]
         guard let first = readSecret("Password for \(user) on \(origin): "), !first.isEmpty else {

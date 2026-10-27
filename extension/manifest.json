@@ -1,11 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Passhand",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Fills logins from your Mac's Keychain when your AI agent asks. The password never passes through the AI.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv7kDSqo92VgMAxnl42IAkecCLzDd9fdZrepC0+MSx0iqUZJN8RIkOBOW7CnS1SU/jJoS7hRVkAsp+Q1TcVIjr+JI4SMaBaJVI1rz3JMKKJdeaIJog519ty6TKFUo5kaHOLASgnIJKgAy2AD2gbz5MiJVTjtQTVv4/nYXM0JSf66C1zoXeW2suUTm0kSODk64287J2Gr54+exf5S2QYq4py4fE5HuhuJfkUUq7ZDAIlYZpKSxFfBpg2IaGLypk9eMQP/HrkOvu0+Rp6ptzfxoGLrlXY1BmyHY6uUCMC8GuCilUqppScFDPTxVN3+Kc9ngX4LMPfzczcXZ/WojrOrLOwIDAQAB",
   "minimum_chrome_version": "110",
   "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Passhand logins" },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
   "permissions": ["nativeMessaging", "scripting", "tabs", "alarms"],
   "host_permissions": ["<all_urls>"]
 }

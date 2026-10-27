@@ -9,8 +9,10 @@ When a page asks for a username and password:
 2. If it reports several saved accounts, call it again with `username`.
 3. After "Filled …", click the page's sign-in button yourself. Prefer that over `submit: true`.
 4. Two-step logins (email page, then password page): call `fill_login` once on each page.
-5. If it reports no saved login, tell the user to run `passhand add <site> <username>`. **Never ask
-   the user to paste a password into the chat**, and never type one yourself.
+5. If it reports no saved login, tell the user to add one on Passhand's settings page (the Passhand
+   icon in Chrome) or with `passhand add <site> <username>`. **Never ask the user to paste a password
+   into the chat**, and never type one yourself. Don't open or use the settings page; managing logins
+   is the user's job.
 6. 2FA codes, passkeys, CAPTCHAs, sign-up and change-password forms are out of scope. Hand them back
    to the user.
 
@@ -23,7 +25,8 @@ Layout:
 - `helper/`: Swift package, one binary with three roles: MCP server (`mcp`), Chrome native host
   (started with `chrome-extension://…` as its first argument), and CLI.
 - `extension/`: Manifest V3 extension. `snapshotPage` and `fillPage` run inside the page and must
-  stay self-contained.
+  stay self-contained. `options.html`/`options.js` is the settings page for managing logins; it only
+  talks to the background worker, which forwards its requests to the helper.
 - `tests/`: Node tests for the page-side field detection and filling (jsdom).
 
 Build and test:
@@ -42,3 +45,5 @@ Invariants. Don't weaken these, and treat any change that touches them as securi
 - The origin is re-checked right before writing.
 - Duplicate tabs are refused, not guessed.
 - Touch ID before every password fill unless the login is `auto`; enabling `auto` needs Touch ID.
+- Only the extension's own settings page can manage logins, every change from it needs Touch ID
+  (except turning `auto` off), and saved passwords are never sent back to it.

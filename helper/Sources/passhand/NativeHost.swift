@@ -12,7 +12,17 @@ enum NativeHost {
         Log.write("host started")
         SocketServer.start()
         while let message = Framing.read() {
-            ExtensionLink.shared.deliver(message)
+            // "req" marks a request the extension starts (its settings page); everything else answers ours.
+            // Settings requests can wait on Touch ID, so they run off the read loop.
+            if let req = message["req"] as? String {
+                Thread.detachNewThread {
+                    var reply = Settings.handle(message)
+                    reply["req"] = req
+                    Framing.write(reply)
+                }
+            } else {
+                ExtensionLink.shared.deliver(message)
+            }
         }
         Log.write("Chrome closed the connection; host exiting")
         unlink(Paths.socket)
@@ -183,7 +193,7 @@ enum Filler {
         let saved = Vault.entries(origin: origin)
         let accounts = saved.map(\.username)
         guard !accounts.isEmpty else {
-            throw VaultError.message("No saved login for \(origin). The user can add one in Terminal with: passhand add \(origin) <username>")
+            throw VaultError.message("No saved login for \(origin). The user can add one on Passhand's settings page (click the Passhand icon in Chrome) or in Terminal with: passhand add \(origin) <username>")
         }
         let user: String
         if let requested = username, !requested.isEmpty {
